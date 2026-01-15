@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AmeenAhmed/hackathon/game"
 	"github.com/gorilla/websocket"
 )
 
@@ -39,26 +40,13 @@ type Client struct {
 	Send        chan []byte
 }
 
-type MapObject struct {
-	ID string
-	X  int
-	Y  int
-}
-
-// Map data structure
-type MapData struct {
-	Width      int `json:"width"`
-	Height     int `json:"height"`
-	MapObjects []MapObject
-}
-
 // Room represents a game room
 type Room struct {
 	Code       string
 	Dashboard  *Client
 	Players    map[string]*Client
 	GameState  GameState
-	MapData    MapData
+	MapData    game.MapData
 	Created    time.Time
 	LastUpdate time.Time
 	TickRate   time.Duration
@@ -144,10 +132,7 @@ func (rm *RoomManager) CreateRoom() *Room {
 			GamePhase: "waiting",
 			Score:     make(map[string]int),
 		},
-		MapData: MapData{
-			Width:  1920,
-			Height: 1080,
-		},
+		MapData: game.GenerateMap(),
 	}
 
 	rm.rooms[code] = room
@@ -246,10 +231,10 @@ func (r *Room) broadcastGameState() {
 	defer r.mutex.RUnlock()
 
 	state := struct {
-		Type      string    `json:"type"`
-		GameState GameState `json:"gameState"`
-		MapData   MapData   `json:"mapData"`
-		Timestamp int64     `json:"timestamp"`
+		Type      string        `json:"type"`
+		GameState GameState     `json:"gameState"`
+		MapData   game.MapData  `json:"mapData"`
+		Timestamp int64         `json:"timestamp"`
 	}{
 		Type:      "gameUpdate",
 		GameState: r.GameState,
@@ -268,11 +253,11 @@ func (r *Room) broadcastGameState() {
 
 func (r *Room) sendGameStateToClient(client *Client) {
 	state := struct {
-		Type      string    `json:"type"`
-		RoomCode  string    `json:"roomCode"`
-		GameState GameState `json:"gameState"`
-		MapData   MapData   `json:"mapData"`
-		Timestamp int64     `json:"timestamp"`
+		Type      string        `json:"type"`
+		RoomCode  string        `json:"roomCode"`
+		GameState GameState     `json:"gameState"`
+		MapData   game.MapData  `json:"mapData"`
+		Timestamp int64         `json:"timestamp"`
 	}{
 		Type:      "initialState",
 		RoomCode:  r.Code,
