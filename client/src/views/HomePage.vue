@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useWS } from '../composables/useWS';
+const { init, send, on } = useWS();
 
 const code = ref('');
 
@@ -8,12 +9,18 @@ const isValidCode = computed(() => {
   return !!code && code.value.length === 6;
 });
 
-onMounted(() => {
-  const { init, send } = useWS();
+function createRoom() {
+  on('roomCreated', () => {
+    debugger
+    window.location.href = '/dashboard/'
+  });
+  send('createRoom')
+}
 
+onMounted(() => {
   init();
   setTimeout(()=> {
-    send('ping', '');
+    send('ping');
   }, 1000);
 });
 </script>
@@ -39,7 +46,12 @@ onMounted(() => {
         JOIN GAME
       </button>
       <div class="w-full border-b-2 border-slate-500 border-dashed"></div>
-      <button class="px-8 py-3 bg-white rounded-lg font-bold text-slate-800 cursor-pointer w-full">CREATE ROOM</button>
+      <button 
+        class="px-8 py-3 bg-white rounded-lg font-bold text-slate-800 cursor-pointer w-full"
+        @click="createRoom"
+      >
+        CREATE ROOM
+      </button>
     </div>
   </div>
 </template>

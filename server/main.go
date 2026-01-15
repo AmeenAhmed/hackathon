@@ -39,51 +39,42 @@ type Client struct {
 	Send        chan []byte
 }
 
+type MapObject struct {
+	ID string
+	X  int
+	Y  int
+}
+
 // Map data structure
 type MapData struct {
-	Width      int        `json:"width"`
-	Height     int        `json:"height"`
-	Obstacles  []Obstacle `json:"obstacles"`
-	SafeZones  []Zone     `json:"safeZones"`
-	DangerZones []Zone     `json:"dangerZones"`
-}
-
-type Obstacle struct {
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Width  float64 `json:"width"`
-	Height float64 `json:"height"`
-}
-
-type Zone struct {
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Radius float64 `json:"radius"`
+	Width      int `json:"width"`
+	Height     int `json:"height"`
+	MapObjects []MapObject
 }
 
 // Room represents a game room
 type Room struct {
-	Code        string
-	Dashboard   *Client
-	Players     map[string]*Client
-	GameState   GameState
-	MapData     MapData
-	Created     time.Time
-	LastUpdate  time.Time
-	TickRate    time.Duration
-	mutex       sync.RWMutex
-	broadcast   chan []byte
-	register    chan *Client
-	unregister  chan *Client
-	stopTicker  chan bool
+	Code       string
+	Dashboard  *Client
+	Players    map[string]*Client
+	GameState  GameState
+	MapData    MapData
+	Created    time.Time
+	LastUpdate time.Time
+	TickRate   time.Duration
+	mutex      sync.RWMutex
+	broadcast  chan []byte
+	register   chan *Client
+	unregister chan *Client
+	stopTicker chan bool
 }
 
 // GameState holds the current state of the game
 type GameState struct {
 	Players   map[string]*Player `json:"players"`
-	GamePhase string            `json:"gamePhase"` // "waiting", "playing", "ended"
-	Timer     int               `json:"timer"`
-	Score     map[string]int    `json:"score"`
+	GamePhase string             `json:"gamePhase"` // "waiting", "playing", "ended"
+	Timer     int                `json:"timer"`
+	Score     map[string]int     `json:"score"`
 }
 
 // RoomManager manages all active rooms
