@@ -21,20 +21,21 @@ type Message struct {
 
 // Player represents a player in the game
 type Player struct {
-	ID               string    `json:"id"`
-	Name             string    `json:"name"`
-	Color            string    `json:"color"`
-	X                float64   `json:"x"`
-	Y                float64   `json:"y"`
-	Animation        string    `json:"animation"`
-	Direction        string    `json:"direction"`
-	GunRotation      float64   `json:"gunRotation"`
-	GunFlipped       bool      `json:"gunFlipped"`
-	CurrentGun       int       `json:"currentGun"`
-	IsProtected      bool      `json:"isProtected"`
-	ProtectionExpiry time.Time `json:"-"` // Don't send to client
-	CorrectAnswers   int       `json:"correctAnswers"`
-	Kills            int       `json:"kills"`
+	ID                 string    `json:"id"`
+	Name               string    `json:"name"`
+	Color              string    `json:"color"`
+	X                  float64   `json:"x"`
+	Y                  float64   `json:"y"`
+	Animation          string    `json:"animation"`
+	Direction          string    `json:"direction"`
+	GunRotation        float64   `json:"gunRotation"`
+	GunFlipped         bool      `json:"gunFlipped"`
+	CurrentGun         int       `json:"currentGun"`
+	IsProtected        bool      `json:"isProtected"`
+	ProtectionExpiry   time.Time `json:"-"` // Don't send to client
+	CorrectAnswers     int       `json:"correctAnswers"`
+	QuestionsAttempted int       `json:"questionsAttempted"`
+	Kills              int       `json:"kills"`
 }
 
 // Client represents a connected websocket client
@@ -703,14 +704,15 @@ func (c *Client) handleMessage(msg Message) {
 
 	case "updateScore":
 		var data struct {
-			CorrectAnswers int `json:"correctAnswers"`
-			Kills          int `json:"kills"`
+			CorrectAnswers     int `json:"correctAnswers"`
+			QuestionsAttempted int `json:"questionsAttempted"`
+			Kills              int `json:"kills"`
 		}
 		if err := json.Unmarshal(msg.Content, &data); err != nil {
 			log.Printf("Error parsing updateScore message: %v", err)
 			return
 		}
-		c.handleUpdateScore(data.CorrectAnswers, data.Kills)
+		c.handleUpdateScore(data.CorrectAnswers, data.QuestionsAttempted, data.Kills)
 
 	case "endGame":
 		c.handleEndGame()
@@ -1155,7 +1157,7 @@ func (c *Client) handleGetState() {
 	room.sendGameStateToClient(c)
 }
 
-func (c *Client) handleUpdateScore(correctAnswers int, kills int) {
+func (c *Client) handleUpdateScore(correctAnswers int, questionsAttempted int, kills int) {
 	if c.RoomCode == "" || c.Player == nil {
 		return
 	}
@@ -1171,14 +1173,15 @@ func (c *Client) handleUpdateScore(correctAnswers int, kills int) {
 	// Update player stats
 	if player, exists := room.GameState.Players[c.ID]; exists {
 		player.CorrectAnswers = correctAnswers
+		player.QuestionsAttempted = questionsAttempted
 		player.Kills = kills
 
 		// Calculate score: correctAnswers * 3 + kills
 		score := correctAnswers*3 + kills
 		room.GameState.Score[c.ID] = score
 
-		log.Printf("Player %s score updated: correctAnswers=%d, kills=%d, score=%d",
-			c.ID, correctAnswers, kills, score)
+		log.Printf("Player %s score updated: correctAnswers=%d, questionsAttempted=%d, kills=%d, score=%d",
+			c.ID, correctAnswers, questionsAttempted, kills, score)
 	}
 }
 

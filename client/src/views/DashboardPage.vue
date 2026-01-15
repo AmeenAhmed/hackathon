@@ -43,6 +43,23 @@ const leaderboard = computed(() => {
     .map((player, index) => ({ ...player, rank: index + 1 }));
 });
 
+// Computed group accuracy (average of all players' accuracy)
+const groupAccuracy = computed(() => {
+  const players = Object.values(gameStore.players) as Player[];
+  if (players.length === 0) return 0;
+  
+  let totalCorrect = 0;
+  let totalAttempted = 0;
+  
+  players.forEach(player => {
+    totalCorrect += player.correctAnswers || 0;
+    totalAttempted += player.questionsAttempted || 0;
+  });
+  
+  if (totalAttempted === 0) return 0;
+  return Math.round((totalCorrect / totalAttempted) * 100);
+});
+
 // Format timer as MM:SS
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -324,10 +341,23 @@ function startGame() {
           {{ isStarting ? 'STARTING...' : 'START GAME' }}
         </button>
 
-        <!-- Game Status (shows when game is playing) -->
-        <div v-if="gamePhase === 'playing'" class="bg-emerald-500/10 backdrop-blur-sm px-5 py-2.5 rounded-xl border border-emerald-500/30 flex items-center gap-3">
-          <div class="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
-          <span class="text-emerald-400 font-bold text-lg uppercase tracking-wide">Game In Progress</span>
+        <!-- Stats (shows when game is playing) -->
+        <div v-if="gamePhase === 'playing'" class="flex items-center gap-8">
+          <div class="text-center">
+            <div class="text-slate-400 text-sm font-semibold uppercase tracking-wider">Players</div>
+            <div class="text-4xl font-bold tabular-nums text-cyan-400">{{ leaderboard.length }}</div>
+          </div>
+          <div class="text-center">
+            <div class="text-slate-400 text-sm font-semibold uppercase tracking-wider">Accuracy</div>
+            <div 
+              class="text-4xl font-bold tabular-nums"
+              :class="{
+                'text-emerald-400': groupAccuracy >= 70,
+                'text-amber-400': groupAccuracy >= 40 && groupAccuracy < 70,
+                'text-red-400': groupAccuracy < 40
+              }"
+            >{{ groupAccuracy }}%</div>
+          </div>
         </div>
 
         <!-- Game Ended Status -->
@@ -366,77 +396,51 @@ function startGame() {
       <!-- Phaser Game Container -->
       <div id="dashboard-container" class="absolute inset-0 bg-slate-950"></div>
 
-      <!-- Floating Leaderboard - Modern Glass Style -->
-      <div class="absolute top-4 right-4 w-80">
-        <div class="bg-slate-900/70 backdrop-blur-xl rounded-2xl border border-slate-700/50 overflow-hidden shadow-2xl shadow-black/50">
+      <!-- Floating Leaderboard - Projection Optimized -->
+      <div class="absolute top-4 right-4 w-72">
+        <div class="bg-black/60 backdrop-blur-sm rounded-lg overflow-hidden">
           <!-- Leaderboard Header -->
-          <div class="bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-3">
-            <div class="flex items-center gap-2">
-              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              <span class="text-white font-bold text-lg tracking-wide uppercase">Leaderboard</span>
-            </div>
+          <div class="px-4 py-2 border-b border-white/10">
+            <span class="text-white font-bold text-xl tracking-wide uppercase">Leaderboard</span>
           </div>
 
           <!-- Leaderboard List -->
-          <div class="max-h-80 overflow-y-auto">
+          <div class="max-h-72 overflow-y-auto">
             <div
               v-for="player in leaderboard"
               :key="player.id"
-              class="flex items-center gap-3 px-4 py-3 cursor-pointer transition-all duration-200 border-b border-slate-800/50 hover:bg-slate-800/50"
+              class="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-white/5"
               @click="focusOnPlayer(player.id)"
             >
-              <!-- Rank Badge -->
-              <div
-                class="w-8 h-8 rounded-lg flex items-center justify-center text-base font-bold shrink-0"
+              <!-- Rank Number -->
+              <span
+                class="w-6 text-xl font-bold tabular-nums shrink-0"
                 :class="{
-                  'bg-gradient-to-br from-yellow-400 to-amber-500 text-black shadow-lg shadow-amber-500/30': player.rank === 1,
-                  'bg-gradient-to-br from-slate-300 to-slate-400 text-black': player.rank === 2,
-                  'bg-gradient-to-br from-orange-400 to-orange-500 text-black': player.rank === 3,
-                  'bg-slate-800 text-slate-400': player.rank > 3
+                  'text-amber-400': player.rank === 1,
+                  'text-slate-300': player.rank === 2,
+                  'text-orange-400': player.rank === 3,
+                  'text-slate-500': player.rank > 3
                 }"
-              >
-                {{ player.rank }}
-              </div>
+              >{{ player.rank }}</span>
 
               <!-- Player Color Indicator -->
               <div
-                class="w-4 h-4 rounded-full shrink-0 ring-2 ring-white/20"
+                class="w-3 h-3 rounded-full shrink-0"
                 :style="{ backgroundColor: player.color }"
               ></div>
 
               <!-- Player Name -->
               <div class="flex-1 min-w-0">
-                <div class="text-white font-semibold text-base truncate">{{ player.name }}</div>
+                <span class="text-white font-semibold text-lg truncate block">{{ player.name }}</span>
               </div>
 
               <!-- Score -->
-              <div class="text-right shrink-0">
-                <span class="text-emerald-400 font-bold text-lg tabular-nums">{{ player.score.toLocaleString() }}</span>
-              </div>
+              <span class="text-emerald-400 font-bold text-xl tabular-nums">{{ player.score }}</span>
             </div>
 
             <!-- Empty state -->
-            <div v-if="leaderboard.length === 0" class="px-4 py-8 text-center">
-              <div class="w-14 h-14 mx-auto mb-3 rounded-full bg-slate-800 flex items-center justify-center">
-                <svg class="w-7 h-7 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <div class="text-slate-400 font-semibold text-base">Waiting for players...</div>
-              <div class="text-slate-600 text-sm mt-1">Players will appear here when they join</div>
-            </div>
-          </div>
-
-          <!-- Footer -->
-          <div class="bg-slate-800/50 px-4 py-2.5 border-t border-slate-700/50">
-            <div class="flex justify-between items-center">
-              <span class="text-slate-500 text-sm font-semibold">{{ leaderboard.length }} Players</span>
-              <div class="flex items-center gap-1.5">
-                <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                <span class="text-emerald-400 text-sm font-semibold">Live</span>
-              </div>
+            <div v-if="leaderboard.length === 0" class="px-4 py-6 text-center">
+              <div class="text-slate-400 font-semibold text-lg">Waiting for players...</div>
             </div>
           </div>
         </div>
@@ -548,21 +552,21 @@ function startGame() {
 }
 
 /* Custom scrollbar for leaderboard */
-.max-h-80::-webkit-scrollbar {
+.max-h-72::-webkit-scrollbar {
   width: 4px;
 }
 
-.max-h-80::-webkit-scrollbar-track {
+.max-h-72::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.max-h-80::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.3);
+.max-h-72::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 2px;
 }
 
-.max-h-80::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.5);
+.max-h-72::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 /* Smooth hover transitions */

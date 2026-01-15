@@ -363,4 +363,104 @@ export default class UIScene extends Phaser.Scene {
     }
   }
 
+  // Show game over screen
+  showGameOver(kills: number, correctAnswers: number): void {
+    const screenWidth = this.cameras.main.width;
+    const screenHeight = this.cameras.main.height;
+
+    // Hide waiting text if visible
+    this.setWaitingVisible(false);
+
+    // Create semi-transparent background
+    const gameOverBg = this.add.rectangle(
+      screenWidth / 2,
+      screenHeight / 2,
+      screenWidth,
+      screenHeight,
+      0x000000,
+      0.7
+    );
+    gameOverBg.setScrollFactor(0);
+    gameOverBg.setDepth(2000);
+
+    // Create game over container
+    const containerBg = this.add.rectangle(
+      screenWidth / 2,
+      screenHeight / 2,
+      380,
+      280,
+      0x1e1e2e,
+      0.95
+    );
+    containerBg.setStrokeStyle(3, 0xfbbf24);
+    containerBg.setScrollFactor(0);
+    containerBg.setDepth(2001);
+
+    // Game over title
+    const gameOverTitle = this.add.text(screenWidth / 2, screenHeight / 2 - 100, 'GAME OVER!', {
+      fontSize: '42px',
+      color: '#fbbf24',
+      fontStyle: 'bold',
+      fontFamily: 'Arial'
+    });
+    gameOverTitle.setOrigin(0.5, 0.5);
+    gameOverTitle.setScrollFactor(0);
+    gameOverTitle.setDepth(2002);
+
+    // Stats - vertically stacked for clarity
+    const statsStartY = screenHeight / 2 - 40;
+    const statsSpacing = 35;
+
+    // Kills stat row
+    const killsRow = this.add.text(screenWidth / 2, statsStartY, `💀 Kills: ${kills}`, {
+      fontSize: '22px',
+      color: '#f87171',
+      fontStyle: 'bold'
+    });
+    killsRow.setOrigin(0.5, 0.5);
+    killsRow.setScrollFactor(0);
+    killsRow.setDepth(2002);
+
+    // Correct answers stat row
+    const answersRow = this.add.text(screenWidth / 2, statsStartY + statsSpacing, `✓ Correct Answers: ${correctAnswers}`, {
+      fontSize: '22px',
+      color: '#4ade80',
+      fontStyle: 'bold'
+    });
+    answersRow.setOrigin(0.5, 0.5);
+    answersRow.setScrollFactor(0);
+    answersRow.setDepth(2002);
+
+    // Score calculation: kills * 100 + correctAnswers * 50
+    const totalScore = kills * 100 + correctAnswers * 50;
+    const scoreText = this.add.text(screenWidth / 2, statsStartY + statsSpacing * 2 + 10, `Total Score: ${totalScore}`, {
+      fontSize: '28px',
+      color: '#22d3ee',
+      fontStyle: 'bold'
+    });
+    scoreText.setOrigin(0.5, 0.5);
+    scoreText.setScrollFactor(0);
+    scoreText.setDepth(2002);
+
+    // Instruction text
+    const instructionText = this.add.text(screenWidth / 2, screenHeight / 2 + 110, 'Check dashboard for final standings', {
+      fontSize: '16px',
+      color: '#94a3b8'
+    });
+    instructionText.setOrigin(0.5, 0.5);
+    instructionText.setScrollFactor(0);
+    instructionText.setDepth(2002);
+
+    // Pulse animation on title
+    this.tweens.add({
+      targets: gameOverTitle,
+      scaleX: 1.1,
+      scaleY: 1.1,
+      duration: 500,
+      ease: 'Sine.easeInOut',
+      yoyo: true,
+      repeat: -1
+    });
+  }
+
 }

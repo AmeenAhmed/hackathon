@@ -8,6 +8,7 @@ export interface Player {
   direction: 'left' | 'right'
   isProtected: boolean
   correctAnswers: number
+  questionsAttempted: number
   kills: number
 }
 

@@ -80,6 +80,7 @@ export default class MainScene extends Phaser.Scene {
   private isDead: boolean = false;
   private isInAmmoQuiz: boolean = false;
   private gameStarted: boolean = false; // Track if game has started
+  private isGameEnded: boolean = false; // Track if game has ended
 
   // Kill tracking
   private killCount: number = 0;
@@ -90,6 +91,7 @@ export default class MainScene extends Phaser.Scene {
 
   // Score tracking
   private correctAnswers: number = 0;
+  private questionsAttempted: number = 0;
 
   // Ammo system
   private ammo: { [key: number]: number } = {
@@ -515,6 +517,13 @@ export default class MainScene extends Phaser.Scene {
           this.handleRemotePlayerRespawn(data);
         }
       });
+
+      // Listen for game ended event
+      this.ws.on('gameEnded', (data: any) => {
+        if (this.scene.isActive()) {
+          this.handleGameEnded(data);
+        }
+      });
     }
   }
 
@@ -528,6 +537,11 @@ export default class MainScene extends Phaser.Scene {
       if (uiScene && uiScene.setWaitingVisible) {
         uiScene.setWaitingVisible(false);
       }
+    }
+
+    // Check if game has ended
+    if (gameState.gamePhase === 'ended' && !this.isGameEnded) {
+      this.handleGameEnded({ scores: gameState.scores || {} });
     }
 
     if (!gameState.players) return;
@@ -740,6 +754,9 @@ export default class MainScene extends Phaser.Scene {
 
   update(time: number): void {
     if (!this.localPlayer || !this.localPlayer.body) return;
+
+    // Don't process input if game has ended
+    if (this.isGameEnded) return;
 
     // Don't process input if dead and showing quiz
     if (this.isDead) return;
@@ -1378,6 +1395,7 @@ export default class MainScene extends Phaser.Scene {
   // Send correct answers count to server for score calculation
   sendCorrectAnswers(count: number): void {
     this.correctAnswers += count;
+    this.questionsAttempted += 3; // Each quiz has exactly 3 questions
 
     // Update score UI
     this.updateScoreUI();
@@ -1385,6 +1403,7 @@ export default class MainScene extends Phaser.Scene {
     if (this.ws && this.ws.send) {
       this.ws.send('updateScore', {
         correctAnswers: this.correctAnswers,
+        questionsAttempted: this.questionsAttempted,
         kills: this.totalKills
       });
     }
@@ -1395,6 +1414,7 @@ export default class MainScene extends Phaser.Scene {
     if (this.ws && this.ws.send) {
       this.ws.send('updateScore', {
         correctAnswers: this.correctAnswers,
+        questionsAttempted: this.questionsAttempted,
         kills: this.totalKills
       });
     }
@@ -1421,6 +1441,49 @@ export default class MainScene extends Phaser.Scene {
         this.playerHealth.set(data.playerId, 100);
       }
     }
+  }
+
+  handleGameEnded(data: any): void {
+    // Prevent multiple calls
+    if (this.isGameEnded) return;
+    this.isGameEnded = true;
+
+    // Stop player movement
+    if (this.localPlayer && this.localPlayer.body) {
+      this.localPlayer.setVelocity(0, 0);
+    }
+
+    // Hide any active quiz
+    if ((window as any).hideQuiz) {
+      (window as any).hideQuiz();
+    }
+
+    // Update UIScene to show game over state
+    const uiScene = this.scene.get('UIScene') as any;
+    if (uiScene && uiScene.showGameOver) {
+      uiScene.showGameOver(this.totalKills, this.correctAnswers);
+    }
+
+    // Add game over visual effect - darken the screen
+    const overlay = this.add.rectangle(
+      this.cameras.main.worldView.centerX,
+      this.cameras.main.worldView.centerY,
+      this.cameras.main.width * 2,
+      this.cameras.main.height * 2,
+      0x000000,
+      0.5
+    );
+    overlay.setScrollFactor(0);
+    overlay.setDepth(50);
+
+    // Fade in the overlay
+    overlay.setAlpha(0);
+    this.tweens.add({
+      targets: overlay,
+      alpha: 0.5,
+      duration: 500,
+      ease: 'Power2'
+    });
   }
 
   updateScoreUI(): void {
