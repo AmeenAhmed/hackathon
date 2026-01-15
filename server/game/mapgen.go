@@ -7,62 +7,44 @@ import (
 
 // =============================================================================
 // MAP GENERATION CONFIGURATION
+// Designed for 50-100 player maps with open areas and scattered cover
 // =============================================================================
 
-// Structure counts
+// Short winding wall segments (cover, not corridors)
 const (
-	MinStructures = 8  // Minimum number of wall structures
-	MaxStructures = 13 // Maximum number of wall structures
+	MinWallStructures = 12 // Scattered wall structures across map
+	MaxWallStructures = 18
+	WallMinLength     = 6  // Short segments
+	WallMaxLength     = 15 // Not too long
+	MinTurns          = 1  // Each structure has 1-3 turns
+	MaxTurns          = 3
 )
 
-// Cacti counts
+// Alcoves for chests (small, spread out)
 const (
-	MinCacti = 30 // Minimum number of cacti
-	MaxCacti = 50 // Maximum number of cacti
+	MinAlcoves    = 8
+	MaxAlcoves    = 14
+	AlcoveMinSize = 3
+	AlcoveMaxSize = 5
 )
 
-// L-shaped wall dimensions
+// Isolated structures (L/U shapes for cover)
 const (
-	LShapeMinHLen = 6  // Minimum horizontal length
-	LShapeMaxHLen = 13 // Maximum horizontal length
-	LShapeMinVLen = 5  // Minimum vertical length
-	LShapeMaxVLen = 10 // Maximum vertical length
+	MinIsolatedStructures = 6
+	MaxIsolatedStructures = 10
 )
 
-// U-shaped wall dimensions
+// Cacti and chests
 const (
-	UShapeMinWidth  = 6  // Minimum width
-	UShapeMaxWidth  = 11 // Maximum width
-	UShapeMinHeight = 5  // Minimum height
-	UShapeMaxHeight = 9  // Maximum height
+	MinCacti  = 30
+	MaxCacti  = 50
+	MinChests = 6
+	MaxChests = 12
 )
 
-// Room dimensions
+// Spacing - minimum distance between structures
 const (
-	RoomMinWidth  = 5 // Minimum width
-	RoomMaxWidth  = 9 // Maximum width
-	RoomMinHeight = 4 // Minimum height
-	RoomMaxHeight = 7 // Maximum height
-)
-
-// Corridor dimensions
-const (
-	CorridorMinLength = 8  // Minimum length
-	CorridorMaxLength = 17 // Maximum length
-	CorridorMinGap    = 2  // Minimum width (gap between walls)
-	CorridorMaxGap    = 3  // Maximum width (gap between walls)
-)
-
-// Single wall dimensions
-const (
-	SingleWallMinLen = 5  // Minimum length
-	SingleWallMaxLen = 12 // Maximum length
-)
-
-// Chest counts (placed at interior corners of structures)
-const (
-	MinChests = 4 // Minimum number of chests
-	MaxChests = 8 // Maximum number of chests
+	MinStructureSpacing = 12 // Keep structures spread out
 )
 
 // =============================================================================
@@ -71,15 +53,495 @@ type point struct {
 	X, Y int
 }
 
-// Wall structure types
+type direction int
+
 const (
-	structureL = iota      // L-shaped
-	structureU             // U-shaped (3 walls)
-	structureRoom          // Small room (open on one side)
-	structureCorridor      // Corridor segment
-	structureSingleWall    // Just a wall segment
+	dirUp direction = iota
+	dirRight
+	dirDown
+	dirLeft
 )
 
+func GenerateMap() MapData {
+	mapData := MapData{
+		Width:      1920,
+		Height:     1080,
+		MapObjects: []MapObject{},
+		Terrain:    [MapSize][MapSize]int{},
+	}
+
+	// Generate terrain - 90% type 0, 10% scattered types 1-6
+	for y := 0; y < MapSize; y++ {
+		for x := 0; x < MapSize; x++ {
+			if rand.Float64() < 0.9 {
+				mapData.Terrain[y][x] = 0 // 90% base terrain
+			} else {
+				mapData.Terrain[y][x] = 1 + rand.Intn(6) // 10% types 1-6
+			}
+		}
+	}
+
+	walls := make(map[string]bool)
+	structureCenters := []point{} // Track structure centers for spacing
+
+	// Phase 1: Generate scattered winding wall structures
+	generateScatteredWalls(&mapData, walls, &structureCenters)
+
+	// Phase 2: Add alcoves for chests
+	alcoveChestSpots := generateAlcoves(&mapData, walls, &structureCenters)
+
+	// Phase 3: Add isolated L/U structures
+	isolatedChestSpots := generateIsolatedStructures(&mapData, walls, &structureCenters)
+
+	// Phase 4: Place chests
+	allChestSpots := append(alcoveChestSpots, isolatedChestSpots...)
+	placeChestsLimited(&mapData, allChestSpots, walls)
+
+	// Phase 5: Place cacti in open areas
+	placeCacti(&mapData, walls)
+
+	return mapData
+}
+
+// generateScatteredWalls creates short winding wall segments spread across the map
+func generateScatteredWalls(mapData *MapData, walls map[string]bool, centers *[]point) {
+	numStructures := MinWallStructures + rand.Intn(MaxWallStructures-MinWallStructures+1)
+
+	for i := 0; i < numStructures; i++ {
+		// Find a position that's far enough from existing structures
+		var x, y int
+		found := false
+		for attempts := 0; attempts < 50; attempts++ {
+			x = 10 + rand.Intn(MapSize-20)
+			y = 10 + rand.Intn(MapSize-20)
+
+			if isFarFromStructures(x, y, *centers) {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			continue
+		}
+
+		// Create a short winding wall structure
+		createWindingStructure(mapData, x, y, walls)
+		*centers = append(*centers, point{x, y})
+	}
+}
+
+// createWindingStructure creates a short wall that turns 1-3 times
+func createWindingStructure(mapData *MapData, startX, startY int, walls map[string]bool) {
+	x, y := startX, startY
+	dir := direction(rand.Intn(4))
+	numTurns := MinTurns + rand.Intn(MaxTurns-MinTurns+1)
+
+	for turn := 0; turn <= numTurns; turn++ {
+		// Random segment length
+		segLen := WallMinLength + rand.Intn(WallMaxLength-WallMinLength+1)
+
+		dx, dy := directionDelta(dir)
+		wallType := "7" // horizontal
+		if dir == dirUp || dir == dirDown {
+			wallType = "8" // vertical
+		}
+
+		// Place wall segment
+		for i := 0; i < segLen; i++ {
+			if x < 3 || x >= MapSize-3 || y < 3 || y >= MapSize-3 {
+				return
+			}
+
+			key := fmt.Sprintf("%d,%d", x, y)
+			if !walls[key] {
+				mapData.MapObjects = append(mapData.MapObjects, MapObject{ID: wallType, X: x, Y: y})
+				walls[key] = true
+			}
+
+			x += dx
+			y += dy
+		}
+
+		// Turn for next segment (if not last)
+		if turn < numTurns {
+			// Turn left or right
+			if rand.Intn(2) == 0 {
+				dir = (dir + 1) % 4
+			} else {
+				dir = (dir + 3) % 4
+			}
+		}
+	}
+}
+
+// generateAlcoves creates small rooms with one opening containing chests
+func generateAlcoves(mapData *MapData, walls map[string]bool, centers *[]point) []point {
+	var chestSpots []point
+
+	numAlcoves := MinAlcoves + rand.Intn(MaxAlcoves-MinAlcoves+1)
+
+	for i := 0; i < numAlcoves; i++ {
+		// Find position far from other structures
+		var x, y int
+		found := false
+		for attempts := 0; attempts < 50; attempts++ {
+			x = 8 + rand.Intn(MapSize-20)
+			y = 8 + rand.Intn(MapSize-20)
+
+			if isFarFromStructures(x, y, *centers) {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			continue
+		}
+
+		size := AlcoveMinSize + rand.Intn(AlcoveMaxSize-AlcoveMinSize+1)
+		openSide := rand.Intn(4)
+
+		spot := createAlcove(mapData, x, y, size, openSide, walls)
+		if spot != nil {
+			chestSpots = append(chestSpots, *spot)
+			*centers = append(*centers, point{x + size/2, y + size/2})
+		}
+	}
+
+	return chestSpots
+}
+
+// createAlcove creates a small room open on one side
+func createAlcove(mapData *MapData, x, y, size, openSide int, walls map[string]bool) *point {
+	if x < 3 || y < 3 || x+size > MapSize-3 || y+size > MapSize-3 {
+		return nil
+	}
+
+	// Check if area is clear
+	for dy := -1; dy <= size; dy++ {
+		for dx := -1; dx <= size; dx++ {
+			key := fmt.Sprintf("%d,%d", x+dx, y+dy)
+			if walls[key] {
+				return nil
+			}
+		}
+	}
+
+	switch openSide {
+	case 0: // Open at top
+		for i := 0; i < size; i++ {
+			addWall(mapData, x+i, y+size-1, "7", walls)
+		}
+		for i := 1; i < size-1; i++ {
+			addWall(mapData, x, y+i, "8", walls)
+			addWall(mapData, x+size-1, y+i, "8", walls)
+		}
+		return &point{x + size/2, y + size - 2}
+
+	case 1: // Open at right
+		for i := 0; i < size; i++ {
+			addWall(mapData, x, y+i, "8", walls)
+		}
+		for i := 1; i < size-1; i++ {
+			addWall(mapData, x+i, y, "7", walls)
+			addWall(mapData, x+i, y+size-1, "7", walls)
+		}
+		return &point{x + 1, y + size/2}
+
+	case 2: // Open at bottom
+		for i := 0; i < size; i++ {
+			addWall(mapData, x+i, y, "7", walls)
+		}
+		for i := 1; i < size-1; i++ {
+			addWall(mapData, x, y+i, "8", walls)
+			addWall(mapData, x+size-1, y+i, "8", walls)
+		}
+		return &point{x + size/2, y + 1}
+
+	case 3: // Open at left
+		for i := 0; i < size; i++ {
+			addWall(mapData, x+size-1, y+i, "8", walls)
+		}
+		for i := 1; i < size-1; i++ {
+			addWall(mapData, x+i, y, "7", walls)
+			addWall(mapData, x+i, y+size-1, "7", walls)
+		}
+		return &point{x + size - 2, y + size/2}
+	}
+
+	return nil
+}
+
+// generateIsolatedStructures creates L and U shapes spread across the map
+func generateIsolatedStructures(mapData *MapData, walls map[string]bool, centers *[]point) []point {
+	var chestSpots []point
+
+	numStructures := MinIsolatedStructures + rand.Intn(MaxIsolatedStructures-MinIsolatedStructures+1)
+
+	for i := 0; i < numStructures; i++ {
+		var x, y int
+		found := false
+		for attempts := 0; attempts < 50; attempts++ {
+			x = 10 + rand.Intn(MapSize-25)
+			y = 10 + rand.Intn(MapSize-25)
+
+			if isFarFromStructures(x, y, *centers) {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			continue
+		}
+
+		structType := rand.Intn(2)
+		rotation := rand.Intn(4)
+
+		var spot *point
+		if structType == 0 {
+			spot = placeIsolatedL(mapData, x, y, rotation, walls)
+		} else {
+			spot = placeIsolatedU(mapData, x, y, rotation, walls)
+		}
+
+		if spot != nil {
+			chestSpots = append(chestSpots, *spot)
+			*centers = append(*centers, point{x + 3, y + 3})
+		}
+	}
+
+	return chestSpots
+}
+
+// placeIsolatedL creates an L-shaped structure
+func placeIsolatedL(mapData *MapData, x, y, rotation int, walls map[string]bool) *point {
+	hLen := 4 + rand.Intn(3) // 4-6
+	vLen := 3 + rand.Intn(2) // 3-4
+
+	// Check if area is clear
+	for dy := -1; dy <= vLen+1; dy++ {
+		for dx := -1; dx <= hLen+1; dx++ {
+			key := fmt.Sprintf("%d,%d", x+dx, y+dy)
+			if walls[key] {
+				return nil
+			}
+		}
+	}
+
+	var chestX, chestY int
+
+	switch rotation {
+	case 0:
+		for i := 0; i < hLen; i++ {
+			addWall(mapData, x+i, y, "7", walls)
+		}
+		for i := 1; i < vLen; i++ {
+			addWall(mapData, x, y+i, "8", walls)
+		}
+		chestX, chestY = x+1, y+1
+
+	case 1:
+		for i := 0; i < hLen; i++ {
+			addWall(mapData, x+i, y, "7", walls)
+		}
+		for i := 1; i < vLen; i++ {
+			addWall(mapData, x+hLen-1, y+i, "8", walls)
+		}
+		chestX, chestY = x+hLen-2, y+1
+
+	case 2:
+		for i := 0; i < hLen; i++ {
+			addWall(mapData, x+i, y+vLen-1, "7", walls)
+		}
+		for i := 0; i < vLen-1; i++ {
+			addWall(mapData, x+hLen-1, y+i, "8", walls)
+		}
+		chestX, chestY = x+hLen-2, y+vLen-2
+
+	case 3:
+		for i := 0; i < hLen; i++ {
+			addWall(mapData, x+i, y+vLen-1, "7", walls)
+		}
+		for i := 0; i < vLen-1; i++ {
+			addWall(mapData, x, y+i, "8", walls)
+		}
+		chestX, chestY = x+1, y+vLen-2
+	}
+
+	return &point{chestX, chestY}
+}
+
+// placeIsolatedU creates a U-shaped structure
+func placeIsolatedU(mapData *MapData, x, y, rotation int, walls map[string]bool) *point {
+	width := 4 + rand.Intn(2)  // 4-5
+	height := 3 + rand.Intn(2) // 3-4
+
+	// Check if area is clear
+	for dy := -1; dy <= height+1; dy++ {
+		for dx := -1; dx <= width+1; dx++ {
+			key := fmt.Sprintf("%d,%d", x+dx, y+dy)
+			if walls[key] {
+				return nil
+			}
+		}
+	}
+
+	var chestX, chestY int
+
+	switch rotation {
+	case 0: // U opens upward
+		for i := 0; i < width; i++ {
+			addWall(mapData, x+i, y+height-1, "7", walls)
+		}
+		for i := 0; i < height-1; i++ {
+			addWall(mapData, x, y+i, "8", walls)
+			addWall(mapData, x+width-1, y+i, "8", walls)
+		}
+		chestX, chestY = x+width/2, y+height-2
+
+	case 1: // U opens right
+		for i := 0; i < width-1; i++ {
+			addWall(mapData, x+i, y, "7", walls)
+			addWall(mapData, x+i, y+height-1, "7", walls)
+		}
+		for i := 1; i < height-1; i++ {
+			addWall(mapData, x, y+i, "8", walls)
+		}
+		chestX, chestY = x+1, y+height/2
+
+	case 2: // U opens downward
+		for i := 0; i < width; i++ {
+			addWall(mapData, x+i, y, "7", walls)
+		}
+		for i := 1; i < height; i++ {
+			addWall(mapData, x, y+i, "8", walls)
+			addWall(mapData, x+width-1, y+i, "8", walls)
+		}
+		chestX, chestY = x+width/2, y+1
+
+	case 3: // U opens left
+		for i := 1; i < width; i++ {
+			addWall(mapData, x+i, y, "7", walls)
+			addWall(mapData, x+i, y+height-1, "7", walls)
+		}
+		for i := 1; i < height-1; i++ {
+			addWall(mapData, x+width-1, y+i, "8", walls)
+		}
+		chestX, chestY = x+width-2, y+height/2
+	}
+
+	return &point{chestX, chestY}
+}
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+func directionDelta(dir direction) (int, int) {
+	switch dir {
+	case dirUp:
+		return 0, -1
+	case dirRight:
+		return 1, 0
+	case dirDown:
+		return 0, 1
+	case dirLeft:
+		return -1, 0
+	}
+	return 0, 0
+}
+
+func isFarFromStructures(x, y int, centers []point) bool {
+	for _, c := range centers {
+		dx := x - c.X
+		dy := y - c.Y
+		distSq := dx*dx + dy*dy
+		if distSq < MinStructureSpacing*MinStructureSpacing {
+			return false
+		}
+	}
+	return true
+}
+
+func addWall(mapData *MapData, x, y int, wallType string, walls map[string]bool) {
+	if x < 0 || x >= MapSize || y < 0 || y >= MapSize {
+		return
+	}
+	key := fmt.Sprintf("%d,%d", x, y)
+	if walls[key] {
+		return
+	}
+	mapData.MapObjects = append(mapData.MapObjects, MapObject{ID: wallType, X: x, Y: y})
+	walls[key] = true
+}
+
+func placeChestsLimited(mapData *MapData, spots []point, walls map[string]bool) {
+	if len(spots) == 0 {
+		return
+	}
+
+	numChests := MinChests + rand.Intn(MaxChests-MinChests+1)
+	if numChests > len(spots) {
+		numChests = len(spots)
+	}
+
+	rand.Shuffle(len(spots), func(i, j int) {
+		spots[i], spots[j] = spots[j], spots[i]
+	})
+
+	placed := 0
+	for _, spot := range spots {
+		if placed >= numChests {
+			break
+		}
+		key := fmt.Sprintf("%d,%d", spot.X, spot.Y)
+		if !walls[key] && spot.X > 0 && spot.Y > 0 && spot.X < MapSize && spot.Y < MapSize {
+			mapData.MapObjects = append(mapData.MapObjects, MapObject{ID: "10", X: spot.X, Y: spot.Y})
+			walls[key] = true
+			placed++
+		}
+	}
+}
+
+func placeCacti(mapData *MapData, walls map[string]bool) {
+	numCacti := MinCacti + rand.Intn(MaxCacti-MinCacti+1)
+
+	placed := 0
+	attempts := 0
+	maxAttempts := numCacti * 20
+
+	for placed < numCacti && attempts < maxAttempts {
+		x := 3 + rand.Intn(MapSize-6)
+		y := 3 + rand.Intn(MapSize-6)
+		key := fmt.Sprintf("%d,%d", x, y)
+
+		if !walls[key] && !isNearWall(x, y, walls) {
+			mapData.MapObjects = append(mapData.MapObjects, MapObject{ID: "9", X: x, Y: y})
+			walls[key] = true
+			placed++
+		}
+		attempts++
+	}
+}
+
+func isNearWall(x, y int, walls map[string]bool) bool {
+	for dy := -3; dy <= 3; dy++ {
+		for dx := -3; dx <= 3; dx++ {
+			if dx == 0 && dy == 0 {
+				continue
+			}
+			key := fmt.Sprintf("%d,%d", x+dx, y+dy)
+			if walls[key] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Noise functions for terrain
 func noise2D(x, y int, seed int) float64 {
 	n := x + y*57 + seed*131
 	n = (n << 13) ^ n
@@ -126,403 +588,4 @@ func terrainNoise(x, y int, seed int) float64 {
 	}
 
 	return total / maxValue
-}
-
-func GenerateMap() MapData {
-	seed := rand.Intn(10000)
-
-	mapData := MapData{
-		Width:      1920,
-		Height:     1080,
-		MapObjects: []MapObject{},
-		Terrain:    [MapSize][MapSize]int{},
-	}
-
-	// Generate terrain
-	for y := 0; y < MapSize; y++ {
-		for x := 0; x < MapSize; x++ {
-			noiseVal := terrainNoise(x, y, seed)
-			terrainType := int((noiseVal + 1) / 2 * 7)
-			if terrainType > 6 {
-				terrainType = 6
-			}
-			if terrainType < 0 {
-				terrainType = 0
-			}
-			mapData.Terrain[y][x] = terrainType
-		}
-	}
-
-	// Generate varied wall structures with chests inside
-	occupied := make(map[string]bool)
-	chestSpots := generateStructures(&mapData, occupied)
-
-	// Place chests at interior corners
-	placeChests(&mapData, chestSpots, occupied)
-
-	// Place cacti in open areas
-	placeCacti(&mapData, occupied)
-
-	return mapData
-}
-
-// generateStructures creates various wall formations and returns interior corners for chests
-func generateStructures(mapData *MapData, occupied map[string]bool) []point {
-	var chestSpots []point
-	numStructures := MinStructures + rand.Intn(MaxStructures-MinStructures+1)
-
-	for i := 0; i < numStructures; i++ {
-		structType := rand.Intn(5)
-		rotation := rand.Intn(4) // 0=up, 1=right, 2=down, 3=left
-
-		// Random position
-		x := 5 + rand.Intn(MapSize-20)
-		y := 5 + rand.Intn(MapSize-20)
-
-		var spots []point
-		switch structType {
-		case structureL:
-			spots = placeL(mapData, x, y, rotation, occupied)
-		case structureU:
-			spots = placeU(mapData, x, y, rotation, occupied)
-		case structureRoom:
-			spots = placeRoom(mapData, x, y, rotation, occupied)
-		case structureCorridor:
-			spots = placeCorridor(mapData, x, y, rotation, occupied)
-		case structureSingleWall:
-			placeSingleWall(mapData, x, y, rotation, occupied)
-			// No chest for single walls
-		}
-		chestSpots = append(chestSpots, spots...)
-	}
-
-	return chestSpots
-}
-
-// placeL creates an L-shaped wall and returns the interior corner
-//
-//	Example (rotation=0):
-//	  ────
-//	  │
-//	  │
-func placeL(mapData *MapData, x, y int, rotation int, occupied map[string]bool) []point {
-	hLen := LShapeMinHLen + rand.Intn(LShapeMaxHLen-LShapeMinHLen+1)
-	vLen := LShapeMinVLen + rand.Intn(LShapeMaxVLen-LShapeMinVLen+1)
-
-	if !canPlace(x, y, hLen+2, vLen+2, occupied) {
-		return nil
-	}
-
-	var chestX, chestY int
-
-	switch rotation {
-	case 0: // L opens bottom-right
-		// Horizontal wall going right
-		for i := 0; i < hLen; i++ {
-			addWall(mapData, x+i, y, "7", occupied)
-		}
-		// Vertical wall going down
-		for i := 1; i < vLen; i++ {
-			addWall(mapData, x, y+i, "8", occupied)
-		}
-		chestX, chestY = x+1, y+1 // Inside corner
-
-	case 1: // L opens bottom-left
-		for i := 0; i < hLen; i++ {
-			addWall(mapData, x+i, y, "7", occupied)
-		}
-		for i := 1; i < vLen; i++ {
-			addWall(mapData, x+hLen-1, y+i, "8", occupied)
-		}
-		chestX, chestY = x+hLen-2, y+1
-
-	case 2: // L opens top-left
-		for i := 0; i < hLen; i++ {
-			addWall(mapData, x+i, y+vLen-1, "7", occupied)
-		}
-		for i := 0; i < vLen-1; i++ {
-			addWall(mapData, x+hLen-1, y+i, "8", occupied)
-		}
-		chestX, chestY = x+hLen-2, y+vLen-2
-
-	case 3: // L opens top-right
-		for i := 0; i < hLen; i++ {
-			addWall(mapData, x+i, y+vLen-1, "7", occupied)
-		}
-		for i := 0; i < vLen-1; i++ {
-			addWall(mapData, x, y+i, "8", occupied)
-		}
-		chestX, chestY = x+1, y+vLen-2
-	}
-
-	return []point{{chestX, chestY}}
-}
-
-// placeU creates a U-shaped wall (3 walls) and returns the interior corner
-//
-//	Example (rotation=0):
-//	  │     │
-//	  │     │
-//	  ───────
-func placeU(mapData *MapData, x, y int, rotation int, occupied map[string]bool) []point {
-	width := UShapeMinWidth + rand.Intn(UShapeMaxWidth-UShapeMinWidth+1)
-	height := UShapeMinHeight + rand.Intn(UShapeMaxHeight-UShapeMinHeight+1)
-
-	if !canPlace(x, y, width+2, height+2, occupied) {
-		return nil
-	}
-
-	var chestX, chestY int
-
-	switch rotation {
-	case 0: // U opens upward
-		// Bottom horizontal
-		for i := 0; i < width; i++ {
-			addWall(mapData, x+i, y+height-1, "7", occupied)
-		}
-		// Left vertical
-		for i := 0; i < height-1; i++ {
-			addWall(mapData, x, y+i, "8", occupied)
-		}
-		// Right vertical
-		for i := 0; i < height-1; i++ {
-			addWall(mapData, x+width-1, y+i, "8", occupied)
-		}
-		chestX, chestY = x+width/2, y+height-2 // Inside bottom
-
-	case 1: // U opens right
-		for i := 0; i < width; i++ {
-			addWall(mapData, x+i, y, "7", occupied)
-			addWall(mapData, x+i, y+height-1, "7", occupied)
-		}
-		for i := 1; i < height-1; i++ {
-			addWall(mapData, x, y+i, "8", occupied)
-		}
-		chestX, chestY = x+1, y+height/2
-
-	case 2: // U opens downward
-		for i := 0; i < width; i++ {
-			addWall(mapData, x+i, y, "7", occupied)
-		}
-		for i := 1; i < height; i++ {
-			addWall(mapData, x, y+i, "8", occupied)
-			addWall(mapData, x+width-1, y+i, "8", occupied)
-		}
-		chestX, chestY = x+width/2, y+1
-
-	case 3: // U opens left
-		for i := 0; i < width; i++ {
-			addWall(mapData, x+i, y, "7", occupied)
-			addWall(mapData, x+i, y+height-1, "7", occupied)
-		}
-		for i := 1; i < height-1; i++ {
-			addWall(mapData, x+width-1, y+i, "8", occupied)
-		}
-		chestX, chestY = x+width-2, y+height/2
-	}
-
-	return []point{{chestX, chestY}}
-}
-
-// placeRoom creates a small room open on one side
-//
-//	Example (rotation=0, open on right):
-//	  ─────
-//	  │
-//	  │
-//	  ─────
-func placeRoom(mapData *MapData, x, y int, rotation int, occupied map[string]bool) []point {
-	width := RoomMinWidth + rand.Intn(RoomMaxWidth-RoomMinWidth+1)
-	height := RoomMinHeight + rand.Intn(RoomMaxHeight-RoomMinHeight+1)
-
-	if !canPlace(x, y, width+2, height+2, occupied) {
-		return nil
-	}
-
-	var chestX, chestY int
-
-	switch rotation {
-	case 0: // Open on right
-		for i := 0; i < width; i++ {
-			addWall(mapData, x+i, y, "7", occupied)
-			addWall(mapData, x+i, y+height-1, "7", occupied)
-		}
-		for i := 1; i < height-1; i++ {
-			addWall(mapData, x, y+i, "8", occupied)
-		}
-		chestX, chestY = x+1, y+1
-
-	case 1: // Open on bottom
-		for i := 1; i < height-1; i++ {
-			addWall(mapData, x, y+i, "8", occupied)
-			addWall(mapData, x+width-1, y+i, "8", occupied)
-		}
-		for i := 0; i < width; i++ {
-			addWall(mapData, x+i, y, "7", occupied)
-		}
-		chestX, chestY = x+1, y+1
-
-	case 2: // Open on left
-		for i := 0; i < width; i++ {
-			addWall(mapData, x+i, y, "7", occupied)
-			addWall(mapData, x+i, y+height-1, "7", occupied)
-		}
-		for i := 1; i < height-1; i++ {
-			addWall(mapData, x+width-1, y+i, "8", occupied)
-		}
-		chestX, chestY = x+width-2, y+1
-
-	case 3: // Open on top
-		for i := 1; i < height-1; i++ {
-			addWall(mapData, x, y+i, "8", occupied)
-			addWall(mapData, x+width-1, y+i, "8", occupied)
-		}
-		for i := 0; i < width; i++ {
-			addWall(mapData, x+i, y+height-1, "7", occupied)
-		}
-		chestX, chestY = x+1, y+height-2
-	}
-
-	return []point{{chestX, chestY}}
-}
-
-// placeCorridor creates a corridor segment
-func placeCorridor(mapData *MapData, x, y int, rotation int, occupied map[string]bool) []point {
-	length := CorridorMinLength + rand.Intn(CorridorMaxLength-CorridorMinLength+1)
-	gap := CorridorMinGap + rand.Intn(CorridorMaxGap-CorridorMinGap+1)
-
-	if !canPlace(x, y, length+2, gap+4, occupied) {
-		return nil
-	}
-
-	if rotation%2 == 0 { // Horizontal corridor
-		for i := 0; i < length; i++ {
-			addWall(mapData, x+i, y, "7", occupied)
-			addWall(mapData, x+i, y+gap+1, "7", occupied)
-		}
-		// Chest at one end inside corridor
-		return []point{{x + 1, y + 1}}
-	} else { // Vertical corridor
-		for i := 0; i < length; i++ {
-			addWall(mapData, x, y+i, "8", occupied)
-			addWall(mapData, x+gap+1, y+i, "8", occupied)
-		}
-		return []point{{x + 1, y + 1}}
-	}
-}
-
-// placeSingleWall creates a simple wall segment (no chest)
-func placeSingleWall(mapData *MapData, x, y int, rotation int, occupied map[string]bool) {
-	length := SingleWallMinLen + rand.Intn(SingleWallMaxLen-SingleWallMinLen+1)
-
-	if rotation%2 == 0 { // Horizontal
-		if !canPlace(x, y, length+2, 3, occupied) {
-			return
-		}
-		for i := 0; i < length; i++ {
-			addWall(mapData, x+i, y, "7", occupied)
-		}
-	} else { // Vertical
-		if !canPlace(x, y, 3, length+2, occupied) {
-			return
-		}
-		for i := 0; i < length; i++ {
-			addWall(mapData, x, y+i, "8", occupied)
-		}
-	}
-}
-
-// Helper to add a wall and mark it occupied
-func addWall(mapData *MapData, x, y int, wallType string, occupied map[string]bool) {
-	if x < 0 || x >= MapSize || y < 0 || y >= MapSize {
-		return
-	}
-	key := fmt.Sprintf("%d,%d", x, y)
-	if occupied[key] {
-		return
-	}
-	mapData.MapObjects = append(mapData.MapObjects, MapObject{ID: wallType, X: x, Y: y})
-	occupied[key] = true
-}
-
-// canPlace checks if an area is free
-func canPlace(x, y, width, height int, occupied map[string]bool) bool {
-	if x < 2 || y < 2 || x+width > MapSize-2 || y+height > MapSize-2 {
-		return false
-	}
-	for dy := -1; dy <= height; dy++ {
-		for dx := -1; dx <= width; dx++ {
-			key := fmt.Sprintf("%d,%d", x+dx, y+dy)
-			if occupied[key] {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func placeChests(mapData *MapData, spots []point, occupied map[string]bool) {
-	if len(spots) == 0 {
-		return
-	}
-
-	// Determine how many chests to place
-	numChests := MinChests + rand.Intn(MaxChests-MinChests+1)
-	if numChests > len(spots) {
-		numChests = len(spots)
-	}
-
-	// Shuffle spots and take the first numChests
-	rand.Shuffle(len(spots), func(i, j int) {
-		spots[i], spots[j] = spots[j], spots[i]
-	})
-
-	placed := 0
-	for _, spot := range spots {
-		if placed >= numChests {
-			break
-		}
-		key := fmt.Sprintf("%d,%d", spot.X, spot.Y)
-		if !occupied[key] && spot.X > 0 && spot.Y > 0 && spot.X < MapSize && spot.Y < MapSize {
-			mapData.MapObjects = append(mapData.MapObjects, MapObject{ID: "10", X: spot.X, Y: spot.Y})
-			occupied[key] = true
-			placed++
-		}
-	}
-}
-
-func placeCacti(mapData *MapData, occupied map[string]bool) {
-	numCacti := MinCacti + rand.Intn(MaxCacti-MinCacti+1)
-
-	placed := 0
-	attempts := 0
-	maxAttempts := numCacti * 10
-
-	for placed < numCacti && attempts < maxAttempts {
-		x := 2 + rand.Intn(MapSize-4)
-		y := 2 + rand.Intn(MapSize-4)
-		key := fmt.Sprintf("%d,%d", x, y)
-
-		if !occupied[key] && !isNearOccupied(x, y, occupied) {
-			mapData.MapObjects = append(mapData.MapObjects, MapObject{ID: "9", X: x, Y: y})
-			occupied[key] = true
-			placed++
-		}
-		attempts++
-	}
-}
-
-func isNearOccupied(x, y int, occupied map[string]bool) bool {
-	for dy := -2; dy <= 2; dy++ {
-		for dx := -2; dx <= 2; dx++ {
-			if dx == 0 && dy == 0 {
-				continue
-			}
-			key := fmt.Sprintf("%d,%d", x+dx, y+dy)
-			if occupied[key] {
-				return true
-			}
-		}
-	}
-	return false
 }
