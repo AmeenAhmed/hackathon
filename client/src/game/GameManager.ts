@@ -16,7 +16,7 @@ export default class GameManager {
     this.config = {
       type: Phaser.WEBGL, // Force WebGL for better performance
       parent: 'game-container',
-      backgroundColor: '#2d2d2d',
+      backgroundColor: '#3f2832',
       pixelArt: true,  // Enable pixel art mode
       antialias: false, // Disable anti-aliasing for crisp pixels
       fps: {

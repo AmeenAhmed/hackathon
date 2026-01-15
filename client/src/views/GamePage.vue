@@ -51,6 +51,10 @@ onMounted(async () => {
           clearTimeout(timeout);
           // console.log('Rejoined room:', message);
           playerStore.setPlayerData(message.player);
+          // Store terrain data for the game to use
+          if (message.mapData) {
+            sessionStorage.setItem('mapData', JSON.stringify(message.mapData));
+          }
           resolve();
         });
 

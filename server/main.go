@@ -21,19 +21,20 @@ type Message struct {
 
 // Player represents a player in the game
 type Player struct {
-	ID             string  `json:"id"`
-	Name           string  `json:"name"`
-	Color          string  `json:"color"`
-	X              float64 `json:"x"`
-	Y              float64 `json:"y"`
-	Animation      string  `json:"animation"`
-	Direction      string  `json:"direction"`
-	GunRotation    float64 `json:"gunRotation"`
-	GunFlipped     bool    `json:"gunFlipped"`
-	CurrentGun     int     `json:"currentGun"`
-	IsProtected    bool    `json:"isProtected"`
-	CorrectAnswers int     `json:"correctAnswers"`
-	Kills          int     `json:"kills"`
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Color            string    `json:"color"`
+	X                float64   `json:"x"`
+	Y                float64   `json:"y"`
+	Animation        string    `json:"animation"`
+	Direction        string    `json:"direction"`
+	GunRotation      float64   `json:"gunRotation"`
+	GunFlipped       bool      `json:"gunFlipped"`
+	CurrentGun       int       `json:"currentGun"`
+	IsProtected      bool      `json:"isProtected"`
+	ProtectionExpiry time.Time `json:"-"` // Don't send to client
+	CorrectAnswers   int       `json:"correctAnswers"`
+	Kills            int       `json:"kills"`
 }
 
 // Client represents a connected websocket client
@@ -124,6 +125,25 @@ func (rm *RoomManager) CreateRoom() *Room {
 	}
 
 	// Create new room with 30Hz tick rate
+	mapData := game.GenerateMap()
+
+	// Debug: Count different types of objects
+	var wallCount, chestCount, cactusCount, lootCount int
+	for _, obj := range mapData.MapObjects {
+		switch obj.ID {
+		case "7", "8":
+			wallCount++
+		case "9":
+			cactusCount++
+		case "10":
+			chestCount++
+		case "11", "12":
+			lootCount++
+		}
+	}
+	log.Printf("Generated map with %d total objects: %d walls, %d cacti, %d chests, %d loot items",
+		len(mapData.MapObjects), wallCount, cactusCount, chestCount, lootCount)
+
 	room := &Room{
 		Code:       code,
 		Players:    make(map[string]*Client),
@@ -138,7 +158,7 @@ func (rm *RoomManager) CreateRoom() *Room {
 			GamePhase: "waiting",
 			Score:     make(map[string]int),
 		},
-		MapData: game.GenerateMap(),
+		MapData: mapData,
 	}
 
 	rm.rooms[code] = room
@@ -192,9 +212,24 @@ func (r *Room) ticker() {
 	for {
 		select {
 		case <-ticker.C:
+			r.checkSpawnProtection()
 			r.broadcastGameState()
 		case <-r.stopTicker:
 			return
+		}
+	}
+}
+
+// checkSpawnProtection removes expired spawn protection
+func (r *Room) checkSpawnProtection() {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	now := time.Now()
+	for _, player := range r.GameState.Players {
+		if player.IsProtected && !player.ProtectionExpiry.IsZero() && now.After(player.ProtectionExpiry) {
+			player.IsProtected = false
+			player.ProtectionExpiry = time.Time{} // Reset to zero value
 		}
 	}
 }
@@ -384,6 +419,54 @@ func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation str
 		player.CurrentGun = currentGun
 		r.LastUpdate = time.Now()
 	}
+}
+
+// getRandomSpawnPoint returns a random spawn point from floor tiles (terrain 0-6)
+// Avoids spawning on tiles with terrain value -1 (outside map) or walls (7+)
+func (r *Room) getRandomSpawnPoint() (float64, float64) {
+	// Collect all valid floor positions (terrain values 0-6)
+	type FloorTile struct {
+		X, Y int
+	}
+	var floorTiles []FloorTile
+
+	// Look through the terrain array for valid floor tiles
+	for y := 0; y < game.MapSize; y++ {
+		for x := 0; x < game.MapSize; x++ {
+			terrainValue := r.MapData.Terrain[y][x]
+			// Floor tiles have values 0-6, avoid -1 (outside map) and 7+ (walls/objects)
+			if terrainValue >= 0 && terrainValue <= 6 {
+				// Also check that there's no wall object at this position
+				hasWall := false
+				for _, obj := range r.MapData.MapObjects {
+					if obj.X == x && obj.Y == y && (obj.ID == "7" || obj.ID == "8") {
+						hasWall = true
+						break
+					}
+				}
+				if !hasWall {
+					floorTiles = append(floorTiles, FloorTile{X: x, Y: y})
+				}
+			}
+		}
+	}
+
+	log.Printf("Found %d floor tiles for spawning", len(floorTiles))
+
+	// If we have floor tiles, pick a random one
+	if len(floorTiles) > 0 {
+		tile := floorTiles[rand.Intn(len(floorTiles))]
+		// Convert tile coordinates to pixel coordinates (center of tile)
+		x := float64(tile.X*16 + 8)
+		y := float64(tile.Y*16 + 8)
+		log.Printf("Spawning at floor tile: tile(%d, %d) -> pixel(%.0f, %.0f)", tile.X, tile.Y, x, y)
+		return x, y
+	}
+
+	// Fallback: spawn at map center with some randomness
+	log.Printf("No floor tiles found! Using fallback spawn at center")
+	return float64(r.MapData.Width/2 + rand.Intn(200) - 100),
+		float64(r.MapData.Height/2 + rand.Intn(200) - 100)
 }
 
 // CORS middleware
@@ -698,32 +781,36 @@ func (c *Client) handleJoinRoom(code string, playerName string) {
 		return
 	}
 
-	// Create player at center with some randomness
+	// Create player at a random chest spawn point
+	spawnX, spawnY := room.getRandomSpawnPoint()
 	c.Player = &Player{
-		ID:        c.ID,
-		Name:      playerName,
-		Color:     playerColors[rand.Intn(len(playerColors))],
-		X:         float64(room.MapData.Width/2 + rand.Intn(200) - 100),
-		Y:         float64(room.MapData.Height/2 + rand.Intn(200) - 100),
-		Animation: "idle",
-		Direction: "right",
+		ID:          c.ID,
+		Name:        playerName,
+		Color:       playerColors[rand.Intn(len(playerColors))],
+		X:           spawnX,
+		Y:           spawnY,
+		Animation:   "idle",
+		Direction:   "right",
+		IsProtected: false, // No spawn protection on initial join
 	}
 
-	// log.Printf("Created player - ID: %s, Name: %s, Color: %s, Position: (%.0f, %.0f)",
-	// 	c.Player.ID, c.Player.Name, c.Player.Color, c.Player.X, c.Player.Y)
+	log.Printf("Created player - ID: %s, Name: %s, Color: %s, Spawn: (%.0f, %.0f) [Chest spawn]",
+		c.Player.ID, c.Player.Name, c.Player.Color, c.Player.X, c.Player.Y)
 
 	c.RoomCode = code
 	room.register <- c
 
-	// Send success response
+	// Send success response with terrain data
 	response := struct {
-		Type     string  `json:"type"`
-		PlayerID string  `json:"playerId"`
-		Player   *Player `json:"player"`
+		Type     string       `json:"type"`
+		PlayerID string       `json:"playerId"`
+		Player   *Player      `json:"player"`
+		MapData  game.MapData `json:"mapData"`
 	}{
 		Type:     "joinedRoom",
 		PlayerID: c.ID,
 		Player:   c.Player,
+		MapData:  room.MapData,
 	}
 
 	data, _ := json.Marshal(response)
@@ -751,33 +838,35 @@ func (c *Client) handleRejoinRoom(code string, playerID string) {
 	room.mutex.RUnlock()
 
 	if playerExists {
-		// Reuse existing player data but update the client ID
+		// Reuse existing player data but give them a new spawn point
 		c.ID = playerID
+		spawnX, spawnY := room.getRandomSpawnPoint()
 		c.Player = &Player{
 			ID:          existingPlayer.ID,
 			Name:        existingPlayer.Name,
 			Color:       existingPlayer.Color,
-			X:           existingPlayer.X,
-			Y:           existingPlayer.Y,
-			Animation:   existingPlayer.Animation,
+			X:           spawnX, // New spawn point instead of old position
+			Y:           spawnY, // New spawn point instead of old position
+			Animation:   "idle",
 			Direction:   existingPlayer.Direction,
-			IsProtected: existingPlayer.IsProtected,
+			IsProtected: false, // No spawn protection on rejoin
 		}
 		// Set default direction if empty
 		if c.Player.Direction == "" {
 			c.Player.Direction = "right"
 		}
-		log.Printf("Player %s rejoining room %s with existing data - Name: %s, Color: %s",
-			playerID, code, c.Player.Name, c.Player.Color)
+		log.Printf("Player %s rejoining room %s with existing data - Name: %s, Color: %s, New spawn: (%.0f, %.0f)",
+			playerID, code, c.Player.Name, c.Player.Color, spawnX, spawnY)
 	} else {
-		// Player wasn't in the room before, create new player data at center
+		// Player wasn't in the room before, create new player data at a random chest spawn point
 		c.ID = playerID
+		spawnX, spawnY := room.getRandomSpawnPoint()
 		c.Player = &Player{
 			ID:        playerID,
 			Name:      "Player",
 			Color:     playerColors[rand.Intn(len(playerColors))],
-			X:         float64(room.MapData.Width/2 + rand.Intn(200) - 100),
-			Y:         float64(room.MapData.Height/2 + rand.Intn(200) - 100),
+			X:         spawnX,
+			Y:         spawnY,
 			Animation: "idle",
 			Direction: "right",
 		}
@@ -785,19 +874,34 @@ func (c *Client) handleRejoinRoom(code string, playerID string) {
 	}
 
 	c.RoomCode = code
+
+	// Update the game state with the new position if player existed
+	if playerExists {
+		room.mutex.Lock()
+		if p, exists := room.GameState.Players[playerID]; exists {
+			p.X = c.Player.X
+			p.Y = c.Player.Y
+			p.IsProtected = c.Player.IsProtected
+			p.ProtectionExpiry = c.Player.ProtectionExpiry
+		}
+		room.mutex.Unlock()
+	}
+
 	room.register <- c
 
-	// Send success response with player data
+	// Send success response with player and terrain data
 	response := struct {
-		Type     string  `json:"type"`
-		PlayerID string  `json:"playerId"`
-		Player   *Player `json:"player"`
-		Rejoined bool    `json:"rejoined"`
+		Type     string       `json:"type"`
+		PlayerID string       `json:"playerId"`
+		Player   *Player      `json:"player"`
+		Rejoined bool         `json:"rejoined"`
+		MapData  game.MapData `json:"mapData"`
 	}{
 		Type:     "rejoinedRoom",
 		PlayerID: c.ID,
 		Player:   c.Player,
 		Rejoined: playerExists,
+		MapData:  room.MapData,
 	}
 
 	data, _ := json.Marshal(response)
@@ -828,11 +932,15 @@ func (c *Client) handleRejoinDashboard(code string) {
 
 	// Send success response
 	response := struct {
-		Type     string `json:"type"`
-		RoomCode string `json:"roomCode"`
+		Type      string       `json:"type"`
+		RoomCode  string       `json:"roomCode"`
+		MapData   game.MapData `json:"mapData"`
+		GameState GameState    `json:"gameState"`
 	}{
-		Type:     "rejoinedDashboard",
-		RoomCode: code,
+		Type:      "rejoinedDashboard",
+		RoomCode:  code,
+		MapData:   room.MapData,
+		GameState: room.GameState,
 	}
 	data, _ := json.Marshal(response)
 	c.Send <- data
@@ -863,6 +971,14 @@ func (c *Client) handleBulletSpawn(bulletID string, x, y, velocityX, velocityY, 
 	if !exists {
 		return
 	}
+
+	// Remove spawn protection when player shoots
+	room.mutex.Lock()
+	if player, exists := room.GameState.Players[c.ID]; exists && player.IsProtected {
+		player.IsProtected = false
+		player.ProtectionExpiry = time.Time{}
+	}
+	room.mutex.Unlock()
 
 	// Broadcast bullet spawn to all other clients
 	room.broadcastToOthers(c.ID, struct {
@@ -966,7 +1082,20 @@ func (c *Client) handlePlayerRespawn(playerID string, x, y float64) {
 		return
 	}
 
-	// Broadcast respawn to all clients
+	// Use server-determined spawn point (ignore client's x, y)
+	spawnX, spawnY := room.getRandomSpawnPoint()
+
+	// Update player position on server with 3 seconds spawn protection
+	room.mutex.Lock()
+	if player, exists := room.GameState.Players[playerID]; exists {
+		player.X = spawnX
+		player.Y = spawnY
+		player.IsProtected = true                                 // Give spawn protection
+		player.ProtectionExpiry = time.Now().Add(3 * time.Second) // 3 seconds of protection
+	}
+	room.mutex.Unlock()
+
+	// Broadcast respawn to all clients with server-determined position
 	room.broadcastToAll(struct {
 		Type     string  `json:"type"`
 		PlayerID string  `json:"playerId"`
@@ -975,8 +1104,8 @@ func (c *Client) handlePlayerRespawn(playerID string, x, y float64) {
 	}{
 		Type:     "playerRespawn",
 		PlayerID: playerID,
-		X:        x,
-		Y:        y,
+		X:        spawnX,
+		Y:        spawnY,
 	})
 }
 

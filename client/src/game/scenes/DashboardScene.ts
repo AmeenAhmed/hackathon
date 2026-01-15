@@ -19,8 +19,9 @@ export default class DashboardScene extends Phaser.Scene {
   private bullets: Map<string, Phaser.GameObjects.Sprite>;
   private tilemap!: Phaser.Tilemaps.Tilemap;
   private terrainLayer!: Phaser.Tilemaps.TilemapLayer;
-  private worldWidth: number = 3000;
-  private worldHeight: number = 3000;
+  private objectsLayer!: Phaser.Tilemaps.TilemapLayer;
+  private worldWidth: number = 3200;  // 200 tiles * 16 pixels
+  private worldHeight: number = 3200; // 200 tiles * 16 pixels
   private currentZoom: number = 3;
   private zoomOutFactor: number = 2; // How much to zoom out (2x means half the zoom)
   private bgMusic: Phaser.Sound.BaseSound | null = null;
@@ -47,12 +48,14 @@ export default class DashboardScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // Load terrain tileset
+    // Load terrain tileset - has 11 tiles (indices 0-10)
     this.load.spritesheet('terrain-tiles', '/assets/spritesheets/Hackathon-Terrain.png', {
       frameWidth: 16,
       frameHeight: 16,
       spacing: 0,
-      margin: 0
+      margin: 0,
+      startFrame: 0,
+      endFrame: 10
     });
 
     // Load player spritesheets
@@ -89,13 +92,13 @@ export default class DashboardScene extends Phaser.Scene {
   create(): void {
     console.log('DashboardScene create() called');
 
-    // Define tilemap dimensions
+    // Define tilemap dimensions - always 200x200 to match server
     const tileSize = 16;
-    const mapWidth = Math.ceil(this.worldWidth / tileSize);
-    const mapHeight = Math.ceil(this.worldHeight / tileSize);
+    const mapWidth = 200;  // Fixed to match server map size
+    const mapHeight = 200; // Fixed to match server map size
 
-    // Set world bounds
-    this.physics.world.setBounds(0, 0, this.worldWidth, this.worldHeight);
+    // Set world bounds to match the full map
+    this.physics.world.setBounds(0, 0, mapWidth * tileSize, mapHeight * tileSize);
 
     // Create the tilemap
     this.createTilemap(mapWidth, mapHeight, tileSize);
@@ -103,13 +106,13 @@ export default class DashboardScene extends Phaser.Scene {
     // Create player animations
     this.createPlayerAnimations();
 
-    // Setup camera
-    this.cameras.main.setBounds(0, 0, this.worldWidth, this.worldHeight);
+    // Setup camera - Use the actual map size (200 tiles * 16 pixels)
+    this.cameras.main.setBounds(0, 0, mapWidth * tileSize, mapHeight * tileSize);
     this.cameras.main.setZoom(this.currentZoom);
     this.cameras.main.setRoundPixels(true);
-    
+
     // Start at center of world
-    this.cameras.main.centerOn(this.worldWidth / 2, this.worldHeight / 2);
+    this.cameras.main.centerOn((mapWidth * tileSize) / 2, (mapHeight * tileSize) / 2);
 
     // Add spectator info text
     this.spectatorInfoText = this.add.text(10, 10, 'Spectator Mode - Waiting for players...', {
@@ -165,27 +168,87 @@ export default class DashboardScene extends Phaser.Scene {
     // Add the tileset to the map
     const tileset = this.tilemap.addTilesetImage('terrain', 'terrain-tiles', tileSize, tileSize, 0, 0);
 
+    // Debug: Check how many tiles are in the tileset
+    if (tileset) {
+      console.log(`Dashboard tileset loaded with ${tileset.total} tiles (firstgid: ${tileset.firstgid})`);
+    }
+
     // Create a layer for the terrain
     this.terrainLayer = this.tilemap.createBlankLayer('terrain', tileset!, 0, 0, mapWidth, mapHeight);
 
-    // Generate random terrain
-    for (let y = 0; y < mapHeight; y++) {
-      for (let x = 0; x < mapWidth; x++) {
-        let tileIndex: number;
-        const random = Math.random();
+    // Get terrain and map objects data from server (passed via sessionStorage)
+    const mapDataStr = sessionStorage.getItem('mapData');
+    let terrainData: number[][] | null = null;
+    let mapObjects: any[] | null = null;
 
-        if (random < 0.95) {
-          tileIndex = 0;
-        } else {
-          tileIndex = Phaser.Math.Between(1, 6);
+    if (mapDataStr) {
+      try {
+        const mapData = JSON.parse(mapDataStr);
+        if (mapData && mapData.terrain) {
+          terrainData = mapData.terrain;
+          // Get map objects (walls, cactus, chests, loot)
+          if (mapData.mapObjects) {
+            mapObjects = mapData.mapObjects;
+            console.log(`Dashboard found ${mapObjects.length} map objects from server`);
+          }
         }
+      } catch (e) {
+        console.error('Failed to parse terrain data:', e);
+      }
+    }
 
-        this.terrainLayer.putTileAt(tileIndex, x, y);
+    // Use server terrain data or fallback to random generation
+    if (terrainData && terrainData.length > 0) {
+      // Use server-provided terrain
+      const serverMapSize = terrainData.length;
+      for (let y = 0; y < Math.min(mapHeight, serverMapSize); y++) {
+        for (let x = 0; x < Math.min(mapWidth, serverMapSize); x++) {
+          const tileIndex = terrainData[y][x] || 0;
+          this.terrainLayer.putTileAt(tileIndex, x, y);
+        }
+      }
+    } else {
+      // Fallback: Generate random terrain
+      for (let y = 0; y < mapHeight; y++) {
+        for (let x = 0; x < mapWidth; x++) {
+          let tileIndex: number;
+          const random = Math.random();
+
+          if (random < 0.95) {
+            tileIndex = 0;
+          } else {
+            tileIndex = Phaser.Math.Between(1, 6);
+          }
+
+          this.terrainLayer.putTileAt(tileIndex, x, y);
+        }
       }
     }
 
     this.terrainLayer.setDepth(0);
     this.terrainLayer.setSize(mapWidth * tileSize, mapHeight * tileSize);
+
+    // Create an objects layer for walls, cactus, chests, etc.
+    this.objectsLayer = this.tilemap.createBlankLayer('objects', tileset!, 0, 0, mapWidth, mapHeight);
+    this.objectsLayer.setDepth(1); // Above terrain but below players
+
+    // Render map objects from server data
+    if (mapObjects && mapObjects.length > 0) {
+      console.log(`Dashboard rendering ${mapObjects.length} map objects`);
+      for (const obj of mapObjects) {
+        const objId = parseInt(obj.id);
+
+        // Server sends: "7"=wall, "8"=wall2, "9"=cactus, "10"=chest, "11"=ammo, "12"=health
+        // These tile indices 7-10 exist in the terrain spritesheet
+        if (objId >= 7 && objId <= 10) {
+          // Use the actual tile indices from the spritesheet
+          if (obj.x >= 0 && obj.x < mapWidth && obj.y >= 0 && obj.y < mapHeight) {
+            this.objectsLayer.putTileAt(objId, obj.x, obj.y);
+          }
+        }
+        // Skip 11-12 for now as they don't exist in tileset
+      }
+    }
   }
 
   public updateGameState(gameState: GameState): void {

@@ -26,6 +26,10 @@ function createRoom() {
 function joinRoom() {
   on('joinedRoom', (message: any) => {
     playerStore.setPlayerData(message.player);
+    // Store terrain data in sessionStorage for the game page to use
+    if (message.mapData) {
+      sessionStorage.setItem('mapData', JSON.stringify(message.mapData));
+    }
     router.push(`/game/${code.value}/${message.playerId}`)
   })
   send('joinRoom', { code: code.value, name: name.value })

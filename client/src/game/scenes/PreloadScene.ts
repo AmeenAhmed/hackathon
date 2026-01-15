@@ -56,12 +56,14 @@ export default class PreloadScene extends Phaser.Scene {
     });
 
     // Load terrain spritesheet
-    // The spritesheet should have 7 tiles (indices 0-6) with 16x16 pixel tiles
+    // The spritesheet has 11 tiles (indices 0-10) with 16x16 pixel tiles
     this.load.spritesheet('terrain-tiles', '/assets/spritesheets/Hackathon-Terrain.png', {
       frameWidth: 16,
       frameHeight: 16,
       margin: 0,
-      spacing: 0
+      spacing: 0,
+      startFrame: 0,
+      endFrame: 10
     });
 
     // Load player animation spritesheets (16x16 pixels)

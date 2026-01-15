@@ -47,8 +47,9 @@ export default class MainScene extends Phaser.Scene {
   private lastUpdateTime: number = 0;
   private tilemap!: Phaser.Tilemaps.Tilemap;
   private terrainLayer!: Phaser.Tilemaps.TilemapLayer;
-  private worldWidth: number = 1500;  // Reduced from 3000 for performance
-  private worldHeight: number = 1500; // Reduced from 3000 for performance
+  private objectsLayer!: Phaser.Tilemaps.TilemapLayer;
+  private worldWidth: number = 3200;  // 200 tiles * 16 pixels
+  private worldHeight: number = 3200; // 200 tiles * 16 pixels
   private currentZoom: number = 3;
   private zoomKeys!: {
     plus: Phaser.Input.Keyboard.Key;
@@ -122,15 +123,15 @@ export default class MainScene extends Phaser.Scene {
   create(): void {
     // console.log('MainScene create() called');
 
-    // Define tilemap dimensions
+    // Define tilemap dimensions - always 200x200 to match server
     const tileSize = 16;
-    const mapWidth = Math.ceil(this.worldWidth / tileSize);
-    const mapHeight = Math.ceil(this.worldHeight / tileSize);
+    const mapWidth = 200;  // Fixed to match server map size
+    const mapHeight = 200; // Fixed to match server map size
 
     // console.log(`Creating tilemap for ${this.worldWidth}x${this.worldHeight} world (${mapWidth}x${mapHeight} tiles)`);
 
-    // Set world bounds larger than viewport
-    this.physics.world.setBounds(0, 0, this.worldWidth, this.worldHeight);
+    // Set world bounds to match the full map
+    this.physics.world.setBounds(0, 0, mapWidth * tileSize, mapHeight * tileSize);
 
     // Create the tilemap
     this.createTilemap(mapWidth, mapHeight, tileSize);
@@ -154,7 +155,8 @@ export default class MainScene extends Phaser.Scene {
     this.createLocalPlayer();
 
     // Setup camera to follow player in the larger world
-    this.cameras.main.setBounds(0, 0, this.worldWidth, this.worldHeight);
+    // Use the actual map size (200 tiles * 16 pixels)
+    this.cameras.main.setBounds(0, 0, mapWidth * tileSize, mapHeight * tileSize);
     this.cameras.main.startFollow(this.localPlayer, true, 1, 1); // Instant camera follow (no smoothing for performance)
     this.cameras.main.setZoom(this.currentZoom); // Zoom in closer to the player
     // this.cameras.main.setRoundPixels(true); // Disabled for performance
@@ -254,26 +256,64 @@ export default class MainScene extends Phaser.Scene {
     // Add the tileset to the map (no margin or spacing between tiles)
     const tileset = this.tilemap.addTilesetImage('terrain', 'terrain-tiles', tileSize, tileSize, 0, 0);
 
+    // Debug: Check how many tiles are in the tileset
+    if (tileset) {
+      console.log(`Tileset loaded with ${tileset.total} tiles (firstgid: ${tileset.firstgid})`);
+    }
+
     // Create a layer for the terrain at position 0,0
     this.terrainLayer = this.tilemap.createBlankLayer('terrain', tileset!, 0, 0, mapWidth, mapHeight);
 
-    // Generate random terrain with heavy bias towards tile 0
-    for (let y = 0; y < mapHeight; y++) {
-      for (let x = 0; x < mapWidth; x++) {
-        // Tile 0 appears 20x more often than all other tiles combined
-        // Ratio 20:1 means tile 0 = 95%, others = 5% total
-        let tileIndex: number;
-        const random = Math.random();
+    // Get terrain data from server (passed via sessionStorage)
+    const mapDataStr = sessionStorage.getItem('mapData');
+    let terrainData: number[][] | null = null;
+    let mapObjects: any[] | null = null;
 
-        if (random < 0.95) {
-          // 95% chance for tile 0 (base/ground tile)
-          tileIndex = 0;
-        } else {
-          // 5% chance split among tiles 1-6 (sparse decoration tiles)
-          tileIndex = Phaser.Math.Between(1, 6);
+    if (mapDataStr) {
+      try {
+        const mapData = JSON.parse(mapDataStr);
+        if (mapData && mapData.terrain) {
+          terrainData = mapData.terrain;
+          // Server sends dimensions in pixels, but we're using fixed 200x200 tiles
+          // Don't update world dimensions since we're using fixed map size
+          // Get map objects (walls, cactus, chests, loot)
+          if (mapData.mapObjects) {
+            mapObjects = mapData.mapObjects;
+            console.log(`Found ${mapObjects.length} map objects from server`);
+          }
         }
+      } catch (e) {
+        console.error('Failed to parse terrain data:', e);
+      }
+    }
 
-        this.terrainLayer.putTileAt(tileIndex, x, y);
+    // Use server terrain data or fallback to random generation
+    if (terrainData && terrainData.length > 0) {
+      // Use server-provided terrain
+      const serverMapSize = terrainData.length;
+      for (let y = 0; y < Math.min(mapHeight, serverMapSize); y++) {
+        for (let x = 0; x < Math.min(mapWidth, serverMapSize); x++) {
+          const tileIndex = terrainData[y][x] || 0;
+          this.terrainLayer.putTileAt(tileIndex, x, y);
+        }
+      }
+    } else {
+      // Fallback: Generate random terrain with heavy bias towards tile 0
+      for (let y = 0; y < mapHeight; y++) {
+        for (let x = 0; x < mapWidth; x++) {
+          let tileIndex: number;
+          const random = Math.random();
+
+          if (random < 0.95) {
+            // 95% chance for tile 0 (base/ground tile)
+            tileIndex = 0;
+          } else {
+            // 5% chance split among tiles 1-6 (sparse decoration tiles)
+            tileIndex = Phaser.Math.Between(1, 6);
+          }
+
+          this.terrainLayer.putTileAt(tileIndex, x, y);
+        }
       }
     }
 
@@ -285,6 +325,51 @@ export default class MainScene extends Phaser.Scene {
 
     // Enable culling for performance - only render visible tiles
     this.terrainLayer.setCullPadding(2, 2);
+
+    // Instead of using tiles for objects, we'll create sprites or use terrain tiles as placeholders
+    // For now, let's use terrain tiles as visual placeholders for walls/obstacles
+    // Create an objects layer for walls, cactus, chests, etc.
+    this.objectsLayer = this.tilemap.createBlankLayer('objects', tileset!, 0, 0, mapWidth, mapHeight);
+    this.objectsLayer.setDepth(1); // Above terrain but below players
+
+    // Create physics groups for different object types
+    const wallsGroup = this.physics.add.staticGroup();
+    const obstaclesGroup = this.physics.add.staticGroup();
+
+    // Render map objects from server data
+    if (mapObjects && mapObjects.length > 0) {
+      console.log(`Rendering ${mapObjects.length} map objects`);
+      for (const obj of mapObjects) {
+        const objId = parseInt(obj.id);
+
+        // Convert to pixel coordinates
+        const pixelX = obj.x * tileSize + tileSize / 2;
+        const pixelY = obj.y * tileSize + tileSize / 2;
+
+        // Server sends: "7"=wall, "8"=wall2, "9"=cactus, "10"=chest, "11"=ammo, "12"=health
+        // These tile indices 7-10 exist in the terrain spritesheet
+        if (objId >= 7 && objId <= 10) {
+          // Use the actual tile indices from the spritesheet
+          if (obj.x >= 0 && obj.x < mapWidth && obj.y >= 0 && obj.y < mapHeight) {
+            this.objectsLayer.putTileAt(objId, obj.x, obj.y);
+            const tile = this.objectsLayer.getTileAt(obj.x, obj.y);
+            if (tile) {
+              // Set collision for walls and obstacles (7, 8, 9) but not chests (10)
+              if (objId === 7 || objId === 8 || objId === 9) {
+                tile.setCollision(true);
+              }
+              // No tinting needed since these are proper sprites
+            }
+          }
+        } else if (objId === 11 || objId === 12) {
+          // Loot (ammo/health) - these don't exist in tileset yet, skip for now
+          // Will need separate sprites for these later
+        }
+      }
+    }
+
+    // Enable culling for objects layer too
+    this.objectsLayer.setCullPadding(2, 2);
 
     // console.log(`Tilemap created: ${mapWidth}x${mapHeight} tiles (${tileSize}px each) = ${mapWidth * tileSize}x${mapHeight * tileSize}px total`);
   }
@@ -302,6 +387,11 @@ export default class MainScene extends Phaser.Scene {
 
     // Start with idle animation
     this.localPlayer.play('player-idle');
+
+    // Enable collision between player and walls
+    if (this.objectsLayer) {
+      this.physics.add.collider(this.localPlayer, this.objectsLayer);
+    }
 
     // Set player color if available from store
     const playerStore = (window as any).playerStore;
@@ -533,6 +623,11 @@ export default class MainScene extends Phaser.Scene {
       gunSprite.setDepth(15); // Higher depth to ensure it's always on top
       gunSprite.setOrigin(0.5, 0.5);
       sprite.gunSprite = gunSprite;
+
+      // Enable collision between this player and walls
+      if (this.objectsLayer) {
+        this.physics.add.collider(sprite, this.objectsLayer);
+      }
 
       this.otherPlayers.set(playerId, sprite);
     } else {

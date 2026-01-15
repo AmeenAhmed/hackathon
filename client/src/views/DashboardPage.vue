@@ -71,6 +71,10 @@ onMounted(async () => {
         gamePhase.value = data.gameState.gamePhase;
       }
     }
+    // Store terrain data for dashboard to use
+    if (data.mapData) {
+      sessionStorage.setItem('mapData', JSON.stringify(data.mapData));
+    }
   });
 
   ws.on('gameUpdate', (data: any) => {

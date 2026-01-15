@@ -13,7 +13,7 @@ export default class DashboardManager {
     this.config = {
       type: Phaser.AUTO,
       parent: 'dashboard-container',
-      backgroundColor: '#2d2d2d',
+      backgroundColor: '#3f2832',
       pixelArt: true,
       antialias: false,
       render: {
