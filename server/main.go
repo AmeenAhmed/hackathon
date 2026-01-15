@@ -28,6 +28,8 @@ type Player struct {
 	Y           float64 `json:"y"`
 	Animation   string  `json:"animation"`
 	Direction   string  `json:"direction"`
+	GunRotation float64 `json:"gunRotation"`
+	GunFlipped  bool    `json:"gunFlipped"`
 	IsProtected bool    `json:"isProtected"`
 }
 
@@ -123,7 +125,7 @@ func (rm *RoomManager) CreateRoom() *Room {
 		Code:       code,
 		Players:    make(map[string]*Client),
 		Created:    time.Now(),
-		TickRate:   time.Second / 30, // 30Hz
+		TickRate:   time.Second / 60, // 60Hz for smoother updates
 		broadcast:  make(chan []byte, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
@@ -204,11 +206,11 @@ func (r *Room) addClient(client *Client) {
 	} else {
 		r.Players[client.ID] = client
 		r.GameState.Players[client.ID] = client.Player
-		log.Printf("Player %s joined room %s", client.ID, r.Code)
+		log.Printf("Player %s joined room %s (total players: %d)", client.ID, r.Code, len(r.GameState.Players))
 	}
 
-	// Send initial game state to new client
-	r.sendGameStateToClient(client)
+	// Don't send initial state immediately - client will request it when ready via getState
+	// This prevents timing issues where the client isn't ready to receive the state yet
 }
 
 func (r *Room) removeClient(client *Client) {
@@ -219,9 +221,11 @@ func (r *Room) removeClient(client *Client) {
 		r.Dashboard = nil
 		log.Printf("Dashboard disconnected from room %s", r.Code)
 	} else {
+		// Remove from active players but keep in game state for rejoin
 		delete(r.Players, client.ID)
-		delete(r.GameState.Players, client.ID)
-		log.Printf("Player %s left room %s", client.ID, r.Code)
+		// Keep player data in GameState so they can rejoin with same name/color/position
+		// Only remove from GameState after a timeout or when room is destroyed
+		log.Printf("Player %s disconnected from room %s (data preserved for rejoin)", client.ID, r.Code)
 	}
 
 	close(client.Send)
@@ -231,15 +235,15 @@ func (r *Room) broadcastGameState() {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
+	// Don't send MapData in regular updates - only GameState
+	// MapData is static and only needs to be sent once on join/rejoin
 	state := struct {
-		Type      string       `json:"type"`
-		GameState GameState    `json:"gameState"`
-		MapData   game.MapData `json:"mapData"`
-		Timestamp int64        `json:"timestamp"`
+		Type      string    `json:"type"`
+		GameState GameState `json:"gameState"`
+		Timestamp int64     `json:"timestamp"`
 	}{
 		Type:      "gameUpdate",
 		GameState: r.GameState,
-		MapData:   r.MapData,
 		Timestamp: time.Now().UnixMilli(),
 	}
 
@@ -250,6 +254,48 @@ func (r *Room) broadcastGameState() {
 	}
 
 	r.broadcast <- data
+}
+
+func (r *Room) broadcastToOthers(senderID string, message interface{}) {
+	data, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("Error marshaling message: %v", err)
+		return
+	}
+
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	for id, client := range r.Players {
+		if id != senderID && client != nil {
+			select {
+			case client.Send <- data:
+			default:
+				// Client's send channel is full, skip
+			}
+		}
+	}
+}
+
+func (r *Room) broadcastToAll(message interface{}) {
+	data, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("Error marshaling message: %v", err)
+		return
+	}
+
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	for _, client := range r.Players {
+		if client != nil {
+			select {
+			case client.Send <- data:
+			default:
+				// Client's send channel is full, skip
+			}
+		}
+	}
 }
 
 func (r *Room) sendGameStateToClient(client *Client) {
@@ -303,16 +349,28 @@ func (r *Room) broadcastToClients(message []byte) {
 	}
 }
 
-func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation string, direction string) {
+func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation string, direction string, gunRotation float64, gunFlipped bool) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	if player, exists := r.GameState.Players[playerID]; exists {
+		// Debug: Log before and after update
+		oldX, oldY := player.X, player.Y
 		player.X = x
 		player.Y = y
 		player.Animation = animation
 		player.Direction = direction
+		player.GunRotation = gunRotation
+		player.GunFlipped = gunFlipped
 		r.LastUpdate = time.Now()
+
+		// Verify the update actually happened
+		if oldX != x || oldY != y {
+			log.Printf("Player %s moved from (%.0f,%.0f) to (%.0f,%.0f), animation: %s",
+				playerID, oldX, oldY, x, y, animation)
+		}
+	} else {
+		log.Printf("WARNING: Player %s not found in GameState.Players", playerID)
 	}
 }
 
@@ -429,20 +487,85 @@ func (c *Client) handleMessage(msg Message) {
 			log.Printf("Error parsing joinRoom message: %v", err)
 			return
 		}
+		// log.Printf("Received joinRoom - Code: %s, Name: %s", data.Code, data.Name)
 		c.handleJoinRoom(data.Code, data.Name)
 
 	case "updatePosition":
 		var data struct {
-			X         float64 `json:"x"`
-			Y         float64 `json:"y"`
-			Animation string  `json:"animation"`
-			Direction string  `json:"direction"`
+			X           float64 `json:"x"`
+			Y           float64 `json:"y"`
+			Animation   string  `json:"animation"`
+			Direction   string  `json:"direction"`
+			GunRotation float64 `json:"gunRotation"`
+			GunFlipped  bool    `json:"gunFlipped"`
 		}
 		if err := json.Unmarshal(msg.Content, &data); err != nil {
 			log.Printf("Error parsing updatePosition message: %v", err)
 			return
 		}
-		c.handleUpdatePosition(data.X, data.Y, data.Animation, data.Direction)
+		c.handleUpdatePosition(data.X, data.Y, data.Animation, data.Direction, data.GunRotation, data.GunFlipped)
+
+	case "bulletSpawn":
+		var data struct {
+			BulletID  string  `json:"bulletId"`
+			X         float64 `json:"x"`
+			Y         float64 `json:"y"`
+			VelocityX float64 `json:"velocityX"`
+			VelocityY float64 `json:"velocityY"`
+			Angle     float64 `json:"angle"`
+			GunType   int     `json:"gunType"`
+		}
+		if err := json.Unmarshal(msg.Content, &data); err != nil {
+			log.Printf("Error parsing bulletSpawn message: %v", err)
+			return
+		}
+		c.handleBulletSpawn(data.BulletID, data.X, data.Y, data.VelocityX, data.VelocityY, data.Angle, data.GunType)
+
+	case "bulletDestroy":
+		var data struct {
+			BulletID string `json:"bulletId"`
+		}
+		if err := json.Unmarshal(msg.Content, &data); err != nil {
+			log.Printf("Error parsing bulletDestroy message: %v", err)
+			return
+		}
+		c.handleBulletDestroy(data.BulletID)
+
+	case "playerHit":
+		var data struct {
+			BulletID       string  `json:"bulletId"`
+			TargetPlayerID string  `json:"targetPlayerId"`
+			Damage         int     `json:"damage"`
+			Health         float64 `json:"health"`
+			IsDead         bool    `json:"isDead"`
+		}
+		if err := json.Unmarshal(msg.Content, &data); err != nil {
+			log.Printf("Error parsing playerHit message: %v", err)
+			return
+		}
+		c.handlePlayerHit(data.BulletID, data.TargetPlayerID, data.Damage, data.Health, data.IsDead)
+
+	case "playerDeath":
+		var data struct {
+			PlayerID string `json:"playerId"`
+		}
+		if err := json.Unmarshal(msg.Content, &data); err != nil {
+			log.Printf("Error parsing playerDeath message: %v", err)
+			return
+		}
+		c.handlePlayerDeath(data.PlayerID)
+
+	case "playerRespawn":
+		var data struct {
+			PlayerID string  `json:"playerId"`
+			X        float64 `json:"x"`
+			Y        float64 `json:"y"`
+		}
+		if err := json.Unmarshal(msg.Content, &data); err != nil {
+			log.Printf("Error parsing playerRespawn message: %v", err)
+			return
+		}
+		c.handlePlayerRespawn(data.PlayerID, data.X, data.Y)
 
 	case "updateGamePhase":
 		var data struct {
@@ -464,6 +587,10 @@ func (c *Client) handleMessage(msg Message) {
 			return
 		}
 		c.handleRejoinRoom(data.Code, data.PlayerID)
+
+	case "getState":
+		// Send current game state to the requesting client
+		c.handleGetState()
 	}
 }
 
@@ -511,6 +638,9 @@ func (c *Client) handleJoinRoom(code string, playerName string) {
 		Animation: "idle",
 		Direction: "right",
 	}
+
+	// log.Printf("Created player - ID: %s, Name: %s, Color: %s, Position: (%.0f, %.0f)",
+	// 	c.Player.ID, c.Player.Name, c.Player.Color, c.Player.X, c.Player.Y)
 
 	c.RoomCode = code
 	room.register <- c
@@ -567,7 +697,8 @@ func (c *Client) handleRejoinRoom(code string, playerID string) {
 		if c.Player.Direction == "" {
 			c.Player.Direction = "right"
 		}
-		log.Printf("Player %s rejoining room %s with existing data", playerID, code)
+		log.Printf("Player %s rejoining room %s with existing data - Name: %s, Color: %s",
+			playerID, code, c.Player.Name, c.Player.Color)
 	} else {
 		// Player wasn't in the room before, create new player data at center
 		c.ID = playerID
@@ -603,7 +734,7 @@ func (c *Client) handleRejoinRoom(code string, playerID string) {
 	c.Send <- data
 }
 
-func (c *Client) handleUpdatePosition(x, y float64, animation string, direction string) {
+func (c *Client) handleUpdatePosition(x, y float64, animation string, direction string, gunRotation float64, gunFlipped bool) {
 	if c.RoomCode == "" || c.Player == nil {
 		return
 	}
@@ -613,7 +744,133 @@ func (c *Client) handleUpdatePosition(x, y float64, animation string, direction 
 		return
 	}
 
-	room.updatePlayerPosition(c.ID, x, y, animation, direction)
+	room.updatePlayerPosition(c.ID, x, y, animation, direction, gunRotation, gunFlipped)
+}
+
+func (c *Client) handleBulletSpawn(bulletID string, x, y, velocityX, velocityY, angle float64, gunType int) {
+	if c.RoomCode == "" || c.Player == nil {
+		return
+	}
+
+	room, exists := roomManager.GetRoom(c.RoomCode)
+	if !exists {
+		return
+	}
+
+	// Broadcast bullet spawn to all other clients
+	room.broadcastToOthers(c.ID, struct {
+		Type      string  `json:"type"`
+		BulletID  string  `json:"bulletId"`
+		OwnerID   string  `json:"ownerId"`
+		X         float64 `json:"x"`
+		Y         float64 `json:"y"`
+		VelocityX float64 `json:"velocityX"`
+		VelocityY float64 `json:"velocityY"`
+		Angle     float64 `json:"angle"`
+		GunType   int     `json:"gunType"`
+	}{
+		Type:      "bulletSpawn",
+		BulletID:  bulletID,
+		OwnerID:   c.ID,
+		X:         x,
+		Y:         y,
+		VelocityX: velocityX,
+		VelocityY: velocityY,
+		Angle:     angle,
+		GunType:   gunType,
+	})
+}
+
+func (c *Client) handleBulletDestroy(bulletID string) {
+	if c.RoomCode == "" || c.Player == nil {
+		return
+	}
+
+	room, exists := roomManager.GetRoom(c.RoomCode)
+	if !exists {
+		return
+	}
+
+	// Broadcast bullet destruction to all other clients
+	room.broadcastToOthers(c.ID, struct {
+		Type     string `json:"type"`
+		BulletID string `json:"bulletId"`
+	}{
+		Type:     "bulletDestroy",
+		BulletID: bulletID,
+	})
+}
+
+func (c *Client) handlePlayerHit(bulletID, targetPlayerID string, damage int, health float64, isDead bool) {
+	if c.RoomCode == "" || c.Player == nil {
+		return
+	}
+
+	room, exists := roomManager.GetRoom(c.RoomCode)
+	if !exists {
+		return
+	}
+
+	// Broadcast hit to all clients for visual effects
+	room.broadcastToAll(struct {
+		Type           string  `json:"type"`
+		BulletID       string  `json:"bulletId"`
+		TargetPlayerID string  `json:"targetPlayerId"`
+		Damage         int     `json:"damage"`
+		Health         float64 `json:"health"`
+		IsDead         bool    `json:"isDead"`
+	}{
+		Type:           "playerHit",
+		BulletID:       bulletID,
+		TargetPlayerID: targetPlayerID,
+		Damage:         damage,
+		Health:         health,
+		IsDead:         isDead,
+	})
+}
+
+func (c *Client) handlePlayerDeath(playerID string) {
+	if c.RoomCode == "" || c.Player == nil {
+		return
+	}
+
+	room, exists := roomManager.GetRoom(c.RoomCode)
+	if !exists {
+		return
+	}
+
+	// Broadcast death to all clients
+	room.broadcastToAll(struct {
+		Type     string `json:"type"`
+		PlayerID string `json:"playerId"`
+	}{
+		Type:     "playerDeath",
+		PlayerID: playerID,
+	})
+}
+
+func (c *Client) handlePlayerRespawn(playerID string, x, y float64) {
+	if c.RoomCode == "" || c.Player == nil {
+		return
+	}
+
+	room, exists := roomManager.GetRoom(c.RoomCode)
+	if !exists {
+		return
+	}
+
+	// Broadcast respawn to all clients
+	room.broadcastToAll(struct {
+		Type     string  `json:"type"`
+		PlayerID string  `json:"playerId"`
+		X        float64 `json:"x"`
+		Y        float64 `json:"y"`
+	}{
+		Type:     "playerRespawn",
+		PlayerID: playerID,
+		X:        x,
+		Y:        y,
+	})
 }
 
 func (c *Client) handleUpdateGamePhase(phase string) {
@@ -633,6 +890,22 @@ func (c *Client) handleUpdateGamePhase(phase string) {
 	log.Printf("Room %s game phase updated to: %s", c.RoomCode, phase)
 }
 
+func (c *Client) handleGetState() {
+	if c.RoomCode == "" {
+		log.Printf("Client %s requested state but not in a room", c.ID)
+		return
+	}
+
+	room, exists := roomManager.GetRoom(c.RoomCode)
+	if !exists {
+		log.Printf("Client %s requested state but room %s not found", c.ID, c.RoomCode)
+		return
+	}
+
+	log.Printf("Sending game state to client %s in room %s", c.ID, c.RoomCode)
+	room.sendGameStateToClient(c)
+}
+
 func main() {
 	// WebSocket endpoint
 	http.HandleFunc("/ws", enableCORS(handleWebSocket))
@@ -645,7 +918,7 @@ func main() {
 
 	log.Println("Game server starting on :8080")
 	log.Println("WebSocket endpoint: ws://localhost:8080/ws")
-	log.Println("30Hz tick rate enabled")
+	log.Println("60Hz tick rate enabled")
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

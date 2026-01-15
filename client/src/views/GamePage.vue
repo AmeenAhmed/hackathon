@@ -41,26 +41,26 @@ onMounted(async () => {
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
           // Don't reject, just resolve to continue with game initialization
-          console.warn('WebSocket connection timeout, continuing anyway');
+          // console.warn('WebSocket connection timeout, continuing anyway');
           resolve();
         }, 3000);
 
         ws.on('rejoinedRoom', (message: any) => {
           clearTimeout(timeout);
-          console.log('Rejoined room:', message);
+          // console.log('Rejoined room:', message);
           playerStore.setPlayerData(message.player);
           resolve();
         });
 
         ws.on('error', (message: any) => {
           clearTimeout(timeout);
-          console.error('WebSocket error:', message);
+          // console.error('WebSocket error:', message);
           // Don't reject, continue with game initialization
           resolve();
         });
 
         setTimeout(() => {
-          console.log('Sending rejoin request:', { code, playerId });
+          // console.log('Sending rejoin request:', { code, playerId });
           ws.send('rejoinRoom', {
             code: code as string,
             playerId: playerId as string
@@ -82,9 +82,9 @@ onMounted(async () => {
     await new Promise(resolve => setTimeout(resolve, 100));
 
     // Initialize Phaser game AFTER the container is rendered
-    console.log('Initializing Phaser game with:', { code, playerId });
+    // console.log('Initializing Phaser game with:', { code, playerId });
     const container = document.getElementById('game-container');
-    console.log('Container element before init:', container);
+    // console.log('Container element before init:', container);
 
     gameManager.value = new GameManager();
     gameManager.value.init(
@@ -92,7 +92,7 @@ onMounted(async () => {
       playerId as string,
       ws
     );
-    console.log('Phaser game initialized');
+    // console.log('Phaser game initialized');
 
     // Setup WebSocket listeners for game updates
     ws.on('gameUpdate', (data: any) => {
@@ -107,7 +107,7 @@ onMounted(async () => {
       }
     });
   } catch (err) {
-    console.error('Game initialization error:', err);
+    // console.error('Game initialization error:', err);
     if (err instanceof Error) {
       error.value = err.message;
     } else if (typeof err === 'string') {

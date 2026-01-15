@@ -13,15 +13,19 @@ export default class GameManager {
     this.roomCode = '';
     this.playerId = '';
     this.config = {
-      type: Phaser.AUTO,
+      type: Phaser.WEBGL, // Force WebGL for better performance
       parent: 'game-container',
       backgroundColor: '#2d2d2d',
       pixelArt: true,  // Enable pixel art mode
       antialias: false, // Disable anti-aliasing for crisp pixels
+      fps: {
+        target: 60, // 60 FPS to match server tick rate
+        forceSetTimeOut: true
+      },
       render: {
         pixelArt: true,
         antialias: false,
-        roundPixels: true // Ensure positions are rounded to whole pixels
+        roundPixels: false // Disabled for performance
       },
       physics: {
         default: 'arcade',
@@ -48,10 +52,10 @@ export default class GameManager {
     // Check if parent element exists
     const parentElement = document.getElementById('game-container');
     if (!parentElement) {
-      console.error('Parent element "game-container" not found!');
+      // console.error('Parent element "game-container" not found!');
       return;
     }
-    console.log('Parent element found:', parentElement);
+    // console.log('Parent element found:', parentElement);
 
     // Add scenes with data
     this.config.scene = [
@@ -67,12 +71,12 @@ export default class GameManager {
       })
     ];
 
-    console.log('Creating Phaser game with config:', this.config);
+    // console.log('Creating Phaser game with config:', this.config);
 
     // Create the game
     this.game = new Phaser.Game(this.config);
 
-    console.log('Phaser game created:', this.game);
+    // console.log('Phaser game created:', this.game);
   }
 
   destroy(): void {

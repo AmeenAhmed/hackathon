@@ -16,7 +16,7 @@ export default class PreloadScene extends Phaser.Scene {
     this.roomCode = data.roomCode;
     this.playerId = data.playerId;
     this.ws = data.ws;
-    console.log('PreloadScene created with:', { roomCode: this.roomCode, playerId: this.playerId });
+    // console.log('PreloadScene created with:', { roomCode: this.roomCode, playerId: this.playerId });
   }
 
   preload(): void {
@@ -87,6 +87,14 @@ export default class PreloadScene extends Phaser.Scene {
       spacing: 0
     });
 
+    // Load bullet sprite (16x16 pixels)
+    this.load.spritesheet('bullets', '/assets/spritesheets/Hackathon-Bullet.png', {
+      frameWidth: 16,
+      frameHeight: 16,
+      margin: 0,
+      spacing: 0
+    });
+
     // Set textures to use nearest neighbor filtering after load
     this.load.on('filecomplete-spritesheet-terrain-tiles', () => {
       const texture = this.textures.get('terrain-tiles');
@@ -108,24 +116,14 @@ export default class PreloadScene extends Phaser.Scene {
       texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
     });
 
-    // Load placeholder assets for other players only
-    this.createPlaceholderAssets();
-  }
-
-  createPlaceholderAssets(): void {
-    // Create a simple circle for other players (until we have their sprites)
-    const circleGraphics = this.make.graphics({ x: 0, y: 0, add: false });
-    circleGraphics.fillStyle(0x00ff00, 1);
-    circleGraphics.fillCircle(8, 8, 8);
-    circleGraphics.generateTexture('otherPlayer', 16, 16);
-    circleGraphics.destroy();
-
-    // Set placeholder textures to use nearest neighbor filtering
-    this.textures.get('otherPlayer').setFilter(Phaser.Textures.FilterMode.NEAREST);
+    this.load.on('filecomplete-spritesheet-bullets', () => {
+      const texture = this.textures.get('bullets');
+      texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    });
   }
 
   create(): void {
-    console.log('PreloadScene create() called, starting MainScene');
+    // console.log('PreloadScene create() called, starting MainScene');
     // Pass data to the main scene and start it
     this.scene.start('MainScene', {
       roomCode: this.roomCode,
