@@ -166,22 +166,37 @@ function startGame() {
 </script>
 
 <template>
-  <div class="w-screen h-screen bg-slate-900 flex flex-col overflow-hidden">
+  <div class="modern-dashboard w-screen h-screen bg-slate-950 flex flex-col overflow-hidden">
+    <!-- Ambient background glow -->
+    <div class="fixed inset-0 pointer-events-none overflow-hidden">
+      <div class="absolute -top-40 -left-40 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl"></div>
+      <div class="absolute -bottom-40 -right-40 w-96 h-96 bg-cyan-600/20 rounded-full blur-3xl"></div>
+    </div>
+
     <!-- Header Bar -->
-    <header class="h-16 bg-gradient-to-r from-slate-800 via-slate-800 to-slate-800 border-b border-slate-700 flex items-center justify-between px-6 shrink-0">
+    <header class="h-16 bg-slate-900/80 backdrop-blur-xl border-b border-slate-700/50 flex items-center justify-between px-6 shrink-0 relative z-10">
       <!-- Logo & Title -->
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/30">
-          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
+      <div class="flex items-center gap-4">
+        <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-lg shadow-violet-500/25">
+          <span class="text-white text-2xl font-bold">W</span>
         </div>
-        <h1 class="text-xl font-bold text-white tracking-wide">
-          <span class="text-indigo-400">Way</span><span class="text-purple-400">War</span>
-        </h1>
+        <div class="flex flex-col">
+          <h1 class="text-3xl font-bold tracking-wide uppercase">
+            <span class="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">WAY</span>
+            <span class="bg-gradient-to-r from-fuchsia-400 to-pink-500 bg-clip-text text-transparent">WAR</span>
+          </h1>
+          <div class="flex items-center gap-2">
+            <span class="live-indicator flex items-center gap-1.5 text-sm text-emerald-400 font-semibold uppercase">
+              <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+              Live
+            </span>
+            <span class="h-4 w-0.5 bg-slate-500 rounded-full"></span>
+            <span class="text-slate-400 text-sm font-medium">Room: <span class="text-cyan-400 font-semibold">{{ route.params.code }}</span></span>
+          </div>
+        </div>
       </div>
 
-      <!-- Global Timer and Start Button -->
+      <!-- Center: Start Button or Game Status -->
       <div class="flex items-center gap-4">
         <!-- Start Game Button (shows when game is waiting) -->
         <button
@@ -189,110 +204,176 @@ function startGame() {
           @click="startGame"
           :disabled="isStarting"
           :class="{
-            'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700': !isStarting,
-            'bg-gradient-to-r from-gray-500 to-gray-600 cursor-not-allowed': isStarting
+            'bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 shadow-lg shadow-emerald-500/30': !isStarting,
+            'bg-gradient-to-r from-slate-600 to-slate-700 cursor-not-allowed': isStarting
           }"
-          class="px-6 py-2 rounded-lg text-white font-semibold transition-all flex items-center gap-2 shadow-lg"
+          class="px-8 py-3 rounded-xl text-white font-bold text-lg tracking-wide transition-all flex items-center gap-3"
         >
-          <svg v-if="!isStarting" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg v-if="!isStarting" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <svg v-else class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg v-else class="w-6 h-6 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" stroke-dasharray="31.4 31.4" />
           </svg>
-          {{ isStarting ? 'Starting...' : 'Start Game' }}
+          {{ isStarting ? 'STARTING...' : 'START GAME' }}
         </button>
 
         <!-- Game Status (shows when game is playing) -->
-        <div v-if="gamePhase === 'playing'" class="bg-green-500/20 px-4 py-2 rounded-lg border border-green-500/50 flex items-center gap-2">
-          <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span class="text-green-400 font-medium">Game In Progress</span>
-        </div>
-
-        <!-- Timer -->
-        <div class="flex items-center gap-3 bg-slate-700/50 px-4 py-2 rounded-lg border border-slate-600">
-          <div class="flex items-center gap-2">
-            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span class="text-slate-400 text-sm font-medium">Round Timer</span>
-          </div>
-          <div class="text-2xl font-mono font-bold text-white tabular-nums">
-            {{ formatTime(globalTimer) }}
-          </div>
+        <div v-if="gamePhase === 'playing'" class="bg-emerald-500/10 backdrop-blur-sm px-5 py-2.5 rounded-xl border border-emerald-500/30 flex items-center gap-3">
+          <div class="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
+          <span class="text-emerald-400 font-bold text-lg uppercase tracking-wide">Game In Progress</span>
         </div>
       </div>
 
-      <!-- Player Info (placeholder) -->
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 bg-gradient-to-br from-emerald-400 to-cyan-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-          P
+      <!-- Global Timer -->
+      <div class="flex items-center gap-3 bg-slate-800/60 backdrop-blur-sm px-5 py-2.5 rounded-xl border border-slate-700/50">
+        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div class="text-3xl font-bold text-white tabular-nums tracking-wider">
+          {{ formatTime(globalTimer) }}
         </div>
-        <span class="text-slate-300 font-medium">Player</span>
       </div>
     </header>
 
     <!-- Main Content Area -->
     <div class="flex-1 relative">
       <!-- Phaser Game Container -->
-      <div id="dashboard-container" class="absolute inset-0 bg-slate-900"></div>
+      <div id="dashboard-container" class="absolute inset-0 bg-slate-950"></div>
 
-      <!-- Floating Leaderboard -->
-      <div class="absolute top-4 right-4 w-72 bg-slate-800/95 backdrop-blur-sm rounded-xl border border-slate-700 shadow-2xl shadow-black/50 overflow-hidden">
-        <!-- Leaderboard Header -->
-        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-3 flex items-center gap-2">
-          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
-          <span class="text-white font-semibold">Leaderboard</span>
-        </div>
+      <!-- Floating Leaderboard - Modern Glass Style -->
+      <div class="absolute top-4 right-4 w-80">
+        <div class="bg-slate-900/70 backdrop-blur-xl rounded-2xl border border-slate-700/50 overflow-hidden shadow-2xl shadow-black/50">
+          <!-- Leaderboard Header -->
+          <div class="bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-3">
+            <div class="flex items-center gap-2">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <span class="text-white font-bold text-lg tracking-wide uppercase">Leaderboard</span>
+            </div>
+          </div>
 
-        <!-- Leaderboard List -->
-        <div class="divide-y divide-slate-700/50">
-          <div
-            v-for="player in leaderboard"
-            :key="player.id"
-            class="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-700/30 transition-colors cursor-pointer"
-            @click="focusOnPlayer(player.id)"
-          >
-            <!-- Rank -->
+          <!-- Leaderboard List -->
+          <div class="max-h-80 overflow-y-auto">
             <div
-              class="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
-              :class="{
-                'bg-amber-500/20 text-amber-400': player.rank === 1,
-                'bg-slate-400/20 text-slate-300': player.rank === 2,
-                'bg-orange-600/20 text-orange-400': player.rank === 3,
-                'bg-slate-700 text-slate-400': player.rank > 3
-              }"
+              v-for="player in leaderboard"
+              :key="player.id"
+              class="flex items-center gap-3 px-4 py-3 cursor-pointer transition-all duration-200 border-b border-slate-800/50 hover:bg-slate-800/50"
+              @click="focusOnPlayer(player.id)"
             >
-              {{ player.rank }}
+              <!-- Rank Badge -->
+              <div
+                class="w-8 h-8 rounded-lg flex items-center justify-center text-base font-bold shrink-0"
+                :class="{
+                  'bg-gradient-to-br from-yellow-400 to-amber-500 text-black shadow-lg shadow-amber-500/30': player.rank === 1,
+                  'bg-gradient-to-br from-slate-300 to-slate-400 text-black': player.rank === 2,
+                  'bg-gradient-to-br from-orange-400 to-orange-500 text-black': player.rank === 3,
+                  'bg-slate-800 text-slate-400': player.rank > 3
+                }"
+              >
+                {{ player.rank }}
+              </div>
+
+              <!-- Player Color Indicator -->
+              <div
+                class="w-4 h-4 rounded-full shrink-0 ring-2 ring-white/20"
+                :style="{ backgroundColor: player.color }"
+              ></div>
+
+              <!-- Player Name -->
+              <div class="flex-1 min-w-0">
+                <div class="text-white font-semibold text-base truncate">{{ player.name }}</div>
+              </div>
+
+              <!-- Score -->
+              <div class="text-right shrink-0">
+                <span class="text-emerald-400 font-bold text-lg tabular-nums">{{ player.score.toLocaleString() }}</span>
+              </div>
             </div>
 
-            <!-- Player Color Indicator -->
-            <div
-              class="w-3 h-3 rounded-full shrink-0"
-              :style="{ backgroundColor: player.color }"
-            ></div>
-
-            <!-- Player Name -->
-            <div class="flex-1 min-w-0">
-              <div class="text-white font-medium text-sm truncate">{{ player.name }}</div>
-            </div>
-
-            <!-- Score -->
-            <div class="text-right shrink-0">
-              <span class="text-emerald-400 font-semibold text-sm tabular-nums">{{ player.score.toLocaleString() }}</span>
+            <!-- Empty state -->
+            <div v-if="leaderboard.length === 0" class="px-4 py-8 text-center">
+              <div class="w-14 h-14 mx-auto mb-3 rounded-full bg-slate-800 flex items-center justify-center">
+                <svg class="w-7 h-7 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
+              <div class="text-slate-400 font-semibold text-base">Waiting for players...</div>
+              <div class="text-slate-600 text-sm mt-1">Players will appear here when they join</div>
             </div>
           </div>
 
-          <!-- Empty state -->
-          <div v-if="leaderboard.length === 0" class="px-4 py-6 text-center text-slate-500 text-sm">
-            Waiting for players to join...
+          <!-- Footer -->
+          <div class="bg-slate-800/50 px-4 py-2.5 border-t border-slate-700/50">
+            <div class="flex justify-between items-center">
+              <span class="text-slate-500 text-sm font-semibold">{{ leaderboard.length }} Players</span>
+              <div class="flex items-center gap-1.5">
+                <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                <span class="text-emerald-400 text-sm font-semibold">Live</span>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
 
+      <!-- Spectator Badge -->
+      <div class="absolute bottom-4 left-4 bg-slate-900/70 backdrop-blur-xl px-5 py-2.5 rounded-full border border-slate-700/50 flex items-center gap-2">
+        <svg class="w-5 h-5 text-fuchsia-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+        </svg>
+        <span class="text-fuchsia-400 text-sm font-bold tracking-wide uppercase">Spectator Mode</span>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap');
+
+.modern-dashboard {
+  font-family: 'Rajdhani', sans-serif;
+}
+
+/* Live indicator pulse */
+.live-indicator span {
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.9);
+  }
+}
+
+/* Custom scrollbar for leaderboard */
+.max-h-80::-webkit-scrollbar {
+  width: 4px;
+}
+
+.max-h-80::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.max-h-80::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 2px;
+}
+
+.max-h-80::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+/* Smooth hover transitions */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+</style>

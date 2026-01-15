@@ -7,12 +7,16 @@ const subscriptions: Record<string, Array<Function>> = {};
 export function useWS() {
  
   function init() {
+    // If already connected, don't create a new connection
+    if (ws) {
+      return;
+    }
+    
     ws = new Sockette(getWebSocketUrl(), {
       timeout: 5e3,
       maxAttempts: 10,
-      onopen: e => {}, // console.log('Connected!', e),
+      onopen: e => {},
       onmessage: e => {
-        // console.log('Received:', e);
         if(e.data) {
           const message = JSON.parse(e.data);
           if(subscriptions[message.type] && subscriptions[message.type].length > 0) {
@@ -22,10 +26,12 @@ export function useWS() {
           }
         }
       },
-      onreconnect: e => {}, // console.log('Reconnecting...', e),
-      onmaximum: e => {}, // console.log('Stop Attempting!', e),
-      onclose: e => {}, // console.log('Closed!', e),
-      onerror: e => {} // console.log('Error:', e)
+      onreconnect: e => {},
+      onmaximum: e => {},
+      onclose: e => {
+        ws = null; // Reset so next init() creates a new connection
+      },
+      onerror: e => {}
     });
   }
 
@@ -42,10 +48,31 @@ export function useWS() {
     subscriptions[eventName].push(callback);
   }
 
+  function off(eventName: string, callback?: Function) {
+    if (!subscriptions[eventName]) return;
+    
+    if (callback) {
+      // Remove specific callback
+      subscriptions[eventName] = subscriptions[eventName].filter(cb => cb !== callback);
+    } else {
+      // Remove all callbacks for this event
+      delete subscriptions[eventName];
+    }
+  }
+
   function close() {
     if(ws) {
       ws.close();
+      ws = null;
     }
+    // Clear all subscriptions
+    Object.keys(subscriptions).forEach(key => {
+      delete subscriptions[key];
+    });
+  }
+
+  function isConnected(): boolean {
+    return ws !== null;
   }
   
   return {
@@ -53,5 +80,7 @@ export function useWS() {
     send,
     close,
     on,
+    off,
+    isConnected,
   }
 }

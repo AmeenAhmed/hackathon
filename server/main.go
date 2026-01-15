@@ -203,15 +203,10 @@ func (r *Room) addClient(client *Client) {
 
 	if client.IsDashboard {
 		r.Dashboard = client
-		log.Printf("Dashboard connected to room %s", r.Code)
 	} else {
 		r.Players[client.ID] = client
 		r.GameState.Players[client.ID] = client.Player
-		log.Printf("Player %s joined room %s (total players: %d)", client.ID, r.Code, len(r.GameState.Players))
 	}
-
-	// Don't send initial state immediately - client will request it when ready via getState
-	// This prevents timing issues where the client isn't ready to receive the state yet
 }
 
 func (r *Room) removeClient(client *Client) {
@@ -298,6 +293,16 @@ func (r *Room) broadcastToAll(message interface{}) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
+	// Send to dashboard
+	if r.Dashboard != nil {
+		select {
+		case r.Dashboard.Send <- data:
+		default:
+			// Dashboard's send channel is full, skip
+		}
+	}
+
+	// Send to all players
 	for _, client := range r.Players {
 		if client != nil {
 			select {
@@ -310,6 +315,7 @@ func (r *Room) broadcastToAll(message interface{}) {
 }
 
 func (r *Room) sendGameStateToClient(client *Client) {
+	r.mutex.RLock()
 	state := struct {
 		Type      string       `json:"type"`
 		RoomCode  string       `json:"roomCode"`
@@ -323,6 +329,7 @@ func (r *Room) sendGameStateToClient(client *Client) {
 		MapData:   r.MapData,
 		Timestamp: time.Now().UnixMilli(),
 	}
+	r.mutex.RUnlock()
 
 	data, err := json.Marshal(state)
 	if err != nil {
@@ -333,7 +340,6 @@ func (r *Room) sendGameStateToClient(client *Client) {
 	select {
 	case client.Send <- data:
 	default:
-		log.Printf("Client %s send buffer full", client.ID)
 	}
 }
 
@@ -352,10 +358,12 @@ func (r *Room) broadcastToClients(message []byte) {
 
 	// Send to all players
 	for _, client := range r.Players {
-		select {
-		case client.Send <- message:
-		default:
-			log.Printf("Player %s send buffer full", client.ID)
+		if client != nil {
+			select {
+			case client.Send <- message:
+			default:
+				log.Printf("Player %s send buffer full", client.ID)
+			}
 		}
 	}
 }
@@ -365,8 +373,6 @@ func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation str
 	defer r.mutex.Unlock()
 
 	if player, exists := r.GameState.Players[playerID]; exists {
-		// Debug: Log before and after update
-		oldX, oldY := player.X, player.Y
 		player.X = x
 		player.Y = y
 		player.Animation = animation
@@ -375,14 +381,6 @@ func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation str
 		player.GunFlipped = gunFlipped
 		player.CurrentGun = currentGun
 		r.LastUpdate = time.Now()
-
-		// Verify the update actually happened
-		if oldX != x || oldY != y {
-			log.Printf("Player %s moved from (%.0f,%.0f) to (%.0f,%.0f), animation: %s",
-				playerID, oldX, oldY, x, y, animation)
-		}
-	} else {
-		log.Printf("WARNING: Player %s not found in GameState.Players", playerID)
 	}
 }
 
@@ -815,23 +813,19 @@ func (c *Client) handleRejoinDashboard(code string) {
 	// Register the dashboard with the room
 	room.register <- c
 
-	// Send current game state to dashboard
-	room.mutex.RLock()
-	gameStateCopy := room.GameState
-	room.mutex.RUnlock()
-
+	// Send success response
 	response := struct {
-		Type      string     `json:"type"`
-		GameState *GameState `json:"gameState"`
+		Type     string `json:"type"`
+		RoomCode string `json:"roomCode"`
 	}{
-		Type:      "rejoinedDashboard",
-		GameState: &gameStateCopy,
+		Type:     "rejoinedDashboard",
+		RoomCode: code,
 	}
-
 	data, _ := json.Marshal(response)
 	c.Send <- data
 
-	log.Printf("Dashboard rejoined room %s", code)
+	// Send initial game state with MapData
+	room.sendGameStateToClient(c)
 }
 
 func (c *Client) handleUpdatePosition(x, y float64, animation string, direction string, gunRotation float64, gunFlipped bool, currentGun int) {
