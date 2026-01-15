@@ -13,6 +13,12 @@ const dashboardManager = new DashboardManager();
 const gamePhase = ref('waiting');
 const isStarting = ref(false);
 
+// Check if we have enough players to start
+const canStartGame = computed(() => {
+  const playerCount = Object.keys(gameStore.players).length;
+  return playerCount >= 1 && !isStarting.value;
+});
+
 // Computed leaderboard from game state
 const leaderboard = computed(() => {
   const players = Object.values(gameStore.players) as Player[];
@@ -202,10 +208,10 @@ function startGame() {
         <button
           v-if="gamePhase === 'waiting'"
           @click="startGame"
-          :disabled="isStarting"
+          :disabled="!canStartGame"
           :class="{
-            'bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 shadow-lg shadow-emerald-500/30': !isStarting,
-            'bg-gradient-to-r from-slate-600 to-slate-700 cursor-not-allowed': isStarting
+            'bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 shadow-lg shadow-emerald-500/30': canStartGame,
+            'bg-gradient-to-r from-slate-600 to-slate-700 cursor-not-allowed opacity-60': !canStartGame
           }"
           class="px-8 py-3 rounded-xl text-white font-bold text-lg tracking-wide transition-all flex items-center gap-3"
         >
