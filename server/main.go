@@ -21,17 +21,19 @@ type Message struct {
 
 // Player represents a player in the game
 type Player struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Color       string  `json:"color"`
-	X           float64 `json:"x"`
-	Y           float64 `json:"y"`
-	Animation   string  `json:"animation"`
-	Direction   string  `json:"direction"`
-	GunRotation float64 `json:"gunRotation"`
-	GunFlipped  bool    `json:"gunFlipped"`
-	CurrentGun  int     `json:"currentGun"`
-	IsProtected bool    `json:"isProtected"`
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	Color          string  `json:"color"`
+	X              float64 `json:"x"`
+	Y              float64 `json:"y"`
+	Animation      string  `json:"animation"`
+	Direction      string  `json:"direction"`
+	GunRotation    float64 `json:"gunRotation"`
+	GunFlipped     bool    `json:"gunFlipped"`
+	CurrentGun     int     `json:"currentGun"`
+	IsProtected    bool    `json:"isProtected"`
+	CorrectAnswers int     `json:"correctAnswers"`
+	Kills          int     `json:"kills"`
 }
 
 // Client represents a connected websocket client
@@ -615,6 +617,17 @@ func (c *Client) handleMessage(msg Message) {
 	case "getState":
 		// Send current game state to the requesting client
 		c.handleGetState()
+
+	case "updateScore":
+		var data struct {
+			CorrectAnswers int `json:"correctAnswers"`
+			Kills          int `json:"kills"`
+		}
+		if err := json.Unmarshal(msg.Content, &data); err != nil {
+			log.Printf("Error parsing updateScore message: %v", err)
+			return
+		}
+		c.handleUpdateScore(data.CorrectAnswers, data.Kills)
 	}
 }
 
@@ -998,6 +1011,33 @@ func (c *Client) handleGetState() {
 
 	log.Printf("Sending game state to client %s in room %s", c.ID, c.RoomCode)
 	room.sendGameStateToClient(c)
+}
+
+func (c *Client) handleUpdateScore(correctAnswers int, kills int) {
+	if c.RoomCode == "" || c.Player == nil {
+		return
+	}
+
+	room, exists := roomManager.GetRoom(c.RoomCode)
+	if !exists {
+		return
+	}
+
+	room.mutex.Lock()
+	defer room.mutex.Unlock()
+
+	// Update player stats
+	if player, exists := room.GameState.Players[c.ID]; exists {
+		player.CorrectAnswers = correctAnswers
+		player.Kills = kills
+
+		// Calculate score: correctAnswers * 3 + kills
+		score := correctAnswers*3 + kills
+		room.GameState.Score[c.ID] = score
+
+		log.Printf("Player %s score updated: correctAnswers=%d, kills=%d, score=%d",
+			c.ID, correctAnswers, kills, score)
+	}
 }
 
 func main() {

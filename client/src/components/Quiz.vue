@@ -62,6 +62,7 @@ const isCorrect = ref(false);
 const allQuestions = ref<Question[]>([]);
 const totalQuestions = 3;
 const currentQuizType = ref<QuizType>('ammo');
+const correctAnswersCount = ref(0); // Track correct answers in this quiz session
 
 const currentQuestion = computed(() => questions.value[currentQuestionIndex.value]);
 const quizTitle = computed(() => currentQuizType.value === 'death' ? 'You Died!' : 'Out of Ammo!');
@@ -83,6 +84,7 @@ const startQuiz = (type: QuizType = 'ammo') => {
   currentQuestionIndex.value = 0;
   selectedAnswer.value = null;
   showFeedback.value = false;
+  correctAnswersCount.value = 0; // Reset correct answers count
 
   // Select 3 random questions
   const shuffled = [...allQuestions.value].sort(() => Math.random() - 0.5);
@@ -94,6 +96,11 @@ const startQuiz = (type: QuizType = 'ammo') => {
 const selectAnswer = (key: string) => {
   selectedAnswer.value = key;
   isCorrect.value = key === String(currentQuestion.value.correct_answer);
+
+  // Track correct answers
+  if (isCorrect.value) {
+    correctAnswersCount.value++;
+  }
 
   showFeedback.value = true;
 
@@ -124,6 +131,9 @@ const completeQuiz = () => {
   if (game) {
     const mainScene = game.scene.getScene('MainScene');
     if (mainScene) {
+      // Send correct answers to server for score calculation
+      mainScene.sendCorrectAnswers(correctAnswersCount.value);
+
       if (currentQuizType.value === 'death') {
         // Handle respawn
         if ((window as any).onQuizComplete) {

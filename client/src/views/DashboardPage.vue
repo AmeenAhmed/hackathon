@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useGameStore } from '../stores/gameStore';
 import { useWS } from '../composables/useWS';
 import DashboardManager from '../game/DashboardManager';
 import type { Player } from '../types';
 
 const route = useRoute();
+const router = useRouter();
 const gameStore = useGameStore();
 const ws = useWS();
 const dashboardManager = new DashboardManager();
 const gamePhase = ref('waiting');
 const isStarting = ref(false);
+const errorMessage = ref<string | null>(null);
 
 // Check if we have enough players to start
 const canStartGame = computed(() => {
@@ -137,6 +139,20 @@ onMounted(async () => {
     dashboardManager.handlePlayerRespawn(data);
   });
 
+  // Handle errors from the server
+  ws.on('error', (data: any) => {
+    console.error('Dashboard received error:', data);
+    if (data.error === 'Room not found') {
+      errorMessage.value = 'Room not found. The room may have been closed or the code is invalid.';
+      // Redirect to home after showing error
+      setTimeout(() => {
+        router.push('/');
+      }, 3000);
+    } else {
+      errorMessage.value = data.error || 'An unexpected error occurred';
+    }
+  });
+
   // Send rejoin request for dashboard
   setTimeout(() => {
     console.log('Sending dashboard rejoin request:', { code });
@@ -173,6 +189,30 @@ function startGame() {
 
 <template>
   <div class="modern-dashboard w-screen h-screen bg-slate-950 flex flex-col overflow-hidden">
+    <!-- Error Modal -->
+    <div v-if="errorMessage" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div class="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md mx-4 shadow-2xl shadow-red-500/20">
+        <div class="flex items-center gap-4 mb-4">
+          <div class="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+            <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 class="text-xl font-bold text-white">Error</h2>
+        </div>
+        <p class="text-slate-300 mb-6">{{ errorMessage }}</p>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500 text-sm">Redirecting to home...</span>
+          <button 
+            @click="router.push('/')" 
+            class="px-4 py-2 bg-red-500 hover:bg-red-400 text-white font-semibold rounded-lg transition-colors"
+          >
+            Go Home Now
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Ambient background glow -->
     <div class="fixed inset-0 pointer-events-none overflow-hidden">
       <div class="absolute -top-40 -left-40 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl"></div>

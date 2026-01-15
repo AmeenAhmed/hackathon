@@ -85,6 +85,9 @@ export default class MainScene extends Phaser.Scene {
   private totalKills: number = 0;
   private isFirstBlood: boolean = false;
 
+  // Score tracking
+  private correctAnswers: number = 0;
+
   // Ammo system
   private ammo: { [key: number]: number } = {
     0: 6,   // Pistol ammo
@@ -1159,6 +1162,9 @@ export default class MainScene extends Phaser.Scene {
     // Update kill counts
     this.totalKills++;
 
+    // Send kill update to server for score calculation
+    this.sendKillUpdate();
+
     // Check if it's a streak (within 5 seconds of last kill)
     if (currentTime - this.lastKillTime < 5000) {
       this.killStreak++;
@@ -1237,6 +1243,27 @@ export default class MainScene extends Phaser.Scene {
     if (streak === 19) return 'MAYHEM';
     if (streak >= 20) return 'GODLIKE';
     return '';
+  }
+
+  // Send correct answers count to server for score calculation
+  sendCorrectAnswers(count: number): void {
+    this.correctAnswers += count;
+    if (this.ws && this.ws.send) {
+      this.ws.send('updateScore', {
+        correctAnswers: this.correctAnswers,
+        kills: this.totalKills
+      });
+    }
+  }
+
+  // Send kill to server for score calculation
+  sendKillUpdate(): void {
+    if (this.ws && this.ws.send) {
+      this.ws.send('updateScore', {
+        correctAnswers: this.correctAnswers,
+        kills: this.totalKills
+      });
+    }
   }
 
   handleRemotePlayerRespawn(data: any): void {

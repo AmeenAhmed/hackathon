@@ -7,6 +7,8 @@ export interface Player {
   animation: 'idle' | 'running'
   direction: 'left' | 'right'
   isProtected: boolean
+  correctAnswers: number
+  kills: number
 }
 
 export interface GameState {
