@@ -210,7 +210,7 @@ func renderMap(mapNum int, ss *Spritesheet) {
 
 				// Draw terrain from mapData.Terrain
 				terrainIdx := mapData.Terrain[y][x]
-				if terrainIdx < len(ss.tiles) {
+				if terrainIdx >= 0 && terrainIdx < len(ss.tiles) {
 					draw.Draw(img, destRect, ss.tiles[terrainIdx], image.Point{0, 0}, draw.Src)
 				}
 

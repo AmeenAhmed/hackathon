@@ -59,8 +59,9 @@ const (
 
 // Tile types for the generation grid
 const (
-	TileWall  = 0
-	TileFloor = 1
+	TileOutside = -1 // Outside the outer walls - no spawning allowed
+	TileWall    = 0
+	TileFloor   = 1
 )
 
 // Directions for walker movement
@@ -147,6 +148,13 @@ func GenerateMap() MapData {
 	// Convert grid edges to renderable wall objects
 	// =========================================================================
 	buildWallObjects(&mapData, grid, occupiedTiles)
+
+	// =========================================================================
+	// PHASE 6: MARK OUTSIDE TERRAIN
+	// Flood-fill from edges to identify tiles outside the outer walls
+	// These tiles get terrain = -1 to prevent player spawning
+	// =========================================================================
+	markOutsideTiles(grid, &mapData)
 
 	return mapData
 }
@@ -800,6 +808,78 @@ func generateTerrainTexture(mapData *MapData) {
 				mapData.Terrain[y][x] = 0
 			} else {
 				mapData.Terrain[y][x] = 1 + rand.Intn(6)
+			}
+		}
+	}
+}
+
+// -----------------------------------------------------------------------------
+// OUTSIDE TILE MARKING
+// Flood-fill from map edges to identify exterior tiles (outside outer walls)
+// -----------------------------------------------------------------------------
+func markOutsideTiles(grid [][]int, mapData *MapData) {
+	// Track which tiles are outside (reachable from edge without crossing floor)
+	outside := make([][]bool, MapSize)
+	for i := range outside {
+		outside[i] = make([]bool, MapSize)
+	}
+
+	// Start flood fill from all edge tiles that are walls
+	stack := []Point{}
+
+	// Add all edge tiles to the stack
+	for x := 0; x < MapSize; x++ {
+		// Top edge
+		if grid[0][x] != TileFloor {
+			stack = append(stack, Point{x, 0})
+		}
+		// Bottom edge
+		if grid[MapSize-1][x] != TileFloor {
+			stack = append(stack, Point{x, MapSize - 1})
+		}
+	}
+	for y := 1; y < MapSize-1; y++ {
+		// Left edge
+		if grid[y][0] != TileFloor {
+			stack = append(stack, Point{0, y})
+		}
+		// Right edge
+		if grid[y][MapSize-1] != TileFloor {
+			stack = append(stack, Point{MapSize - 1, y})
+		}
+	}
+
+	// Flood fill to mark all outside tiles
+	for len(stack) > 0 {
+		p := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		// Bounds check
+		if p.X < 0 || p.X >= MapSize || p.Y < 0 || p.Y >= MapSize {
+			continue
+		}
+
+		// Skip if already visited or is a floor tile
+		if outside[p.Y][p.X] || grid[p.Y][p.X] == TileFloor {
+			continue
+		}
+
+		// Mark as outside
+		outside[p.Y][p.X] = true
+		grid[p.Y][p.X] = TileOutside
+
+		// Add neighbors (4-directional)
+		stack = append(stack, Point{p.X + 1, p.Y})
+		stack = append(stack, Point{p.X - 1, p.Y})
+		stack = append(stack, Point{p.X, p.Y + 1})
+		stack = append(stack, Point{p.X, p.Y - 1})
+	}
+
+	// Set terrain to -1 for all outside tiles
+	for y := 0; y < MapSize; y++ {
+		for x := 0; x < MapSize; x++ {
+			if grid[y][x] == TileOutside {
+				mapData.Terrain[y][x] = TileOutside
 			}
 		}
 	}
