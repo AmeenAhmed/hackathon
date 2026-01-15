@@ -61,5 +61,4 @@ bun.lockb
 # Development files
 .eslintrc*
 .prettierrc*
-tsconfig.*.json
 vite.config.ts.timestamp-*
