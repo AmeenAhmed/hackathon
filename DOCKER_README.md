@@ -25,8 +25,8 @@ docker-compose down
 ```
 
 The application will be available at:
-- **Client**: http://localhost
-- **Server WebSocket**: ws://localhost:8080/ws (proxied through nginx to ws://localhost/ws)
+- **Client**: http://localhost:8091
+- **Server WebSocket**: ws://localhost:8090/ws (or proxied through nginx at ws://localhost:8091/ws)
 
 ### Development Mode
 
@@ -48,12 +48,12 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 ### Services
 
 1. **server**: Go backend WebSocket server
-   - Port: 8080
+   - Port: 8090 (external) -> 8080 (internal)
    - Handles game logic and real-time communication
    - Health check endpoint: `/health`
 
 2. **client**: Vue.js frontend with Phaser game engine
-   - Port: 80
+   - Port: 8091 (external) -> 80 (internal)
    - Served via nginx
    - WebSocket proxy to backend server
 
@@ -146,11 +146,14 @@ For development, volumes are mounted to enable hot-reload:
 3. Check Docker disk space: `docker system df`
 
 ### Port conflicts:
-1. Change ports in `docker-compose.yml`:
+1. Current configuration uses:
+   - Client: 8091 (external) -> 80 (internal)
+   - Server: 8090 (external) -> 8080 (internal)
+2. To change ports, modify in `docker-compose.yml`:
    ```yaml
    ports:
-     - "8081:80"  # Client on 8081 instead of 80
-     - "8082:8080"  # Server on 8082 instead of 8080
+     - "9091:80"   # Client on different port
+     - "9090:8080" # Server on different port
    ```
 
 ## Production Deployment
