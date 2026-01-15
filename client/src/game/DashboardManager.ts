@@ -125,4 +125,55 @@ export default class DashboardManager {
       scene.focusOnPlayer(playerId);
     }
   }
+
+  // Handle bullet spawn
+  handleBulletSpawn(data: any): void {
+    const scene = this.getScene();
+    if (scene && this.sceneReady) {
+      scene.spawnBullet(data);
+    }
+  }
+
+  // Handle bullet destroy
+  handleBulletDestroy(data: any): void {
+    const scene = this.getScene();
+    if (scene && this.sceneReady) {
+      scene.destroyBullet(data.bulletId);
+    }
+  }
+
+  // Handle player hit
+  handlePlayerHit(data: any): void {
+    const scene = this.getScene();
+    if (scene && this.sceneReady) {
+      scene.handlePlayerHit(data);
+    }
+  }
+
+  // Handle player death
+  handlePlayerDeath(data: any): void {
+    const scene = this.getScene();
+    if (scene && this.sceneReady) {
+      scene.handlePlayerDeath(data.playerId);
+    }
+  }
+
+  // Handle player respawn
+  handlePlayerRespawn(data: any): void {
+    const scene = this.getScene();
+    if (scene && this.sceneReady) {
+      scene.handlePlayerRespawn(data.playerId, data.x, data.y);
+    }
+  }
+
+  // Play countdown and start game
+  playCountdownAndStart(onComplete: () => void): void {
+    const scene = this.getScene();
+    if (scene && this.sceneReady) {
+      scene.playCountdownAndStart(onComplete);
+    } else {
+      // If scene not ready, just call the callback immediately
+      onComplete();
+    }
+  }
 }

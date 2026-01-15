@@ -9,18 +9,22 @@ interface PlayerSprite extends Phaser.Physics.Arcade.Sprite {
   playerId?: string;
   nameText?: Phaser.GameObjects.Text;
   gunSprite?: Phaser.GameObjects.Sprite;
+  isDead?: boolean;
+  deathText?: Phaser.GameObjects.Text;
 }
 
 export default class DashboardScene extends Phaser.Scene {
   private ws!: any;
   private players: Map<string, PlayerSprite>;
+  private bullets: Map<string, Phaser.GameObjects.Sprite>;
   private tilemap!: Phaser.Tilemaps.Tilemap;
   private terrainLayer!: Phaser.Tilemaps.TilemapLayer;
   private worldWidth: number = 3000;
   private worldHeight: number = 3000;
   private currentZoom: number = 3;
   private zoomOutFactor: number = 2; // How much to zoom out (2x means half the zoom)
-  
+  private bgMusic: Phaser.Sound.BaseSound | null = null;
+
   // Spectator camera rotation
   private playerIds: string[] = [];
   private currentFocusIndex: number = 0;
@@ -35,6 +39,7 @@ export default class DashboardScene extends Phaser.Scene {
       this.ws = data.ws;
     }
     this.players = new Map();
+    this.bullets = new Map();
   }
 
   init(data: SceneData): void {
@@ -66,6 +71,19 @@ export default class DashboardScene extends Phaser.Scene {
       frameWidth: 16,
       frameHeight: 16
     });
+
+    // Load bullets sprite (note: plural, not singular)
+    this.load.spritesheet('bullets', '/assets/spritesheets/Hackathon-Bullet.png', {
+      frameWidth: 16,
+      frameHeight: 16
+    });
+
+    // Load countdown and game start sounds (dashboard only)
+    this.load.audio('countdown', '/assets/sounds/3_2_1.wav');
+    this.load.audio('gamestart', '/assets/sounds/deathmatch.wav');
+
+    // Load background music (dashboard only)
+    this.load.audio('bgmusic', '/assets/music/bg_music.wav');
   }
 
   create(): void {
@@ -109,6 +127,8 @@ export default class DashboardScene extends Phaser.Scene {
 
     // Start camera rotation timer (5 seconds)
     this.startCameraRotation();
+
+    // Note: WebSocket listeners are handled at DashboardPage level and forwarded here
   }
 
   createPlayerAnimations(): void {
@@ -168,9 +188,18 @@ export default class DashboardScene extends Phaser.Scene {
     this.terrainLayer.setSize(mapWidth * tileSize, mapHeight * tileSize);
   }
 
-  updateGameState(gameState: GameState): void {
+  public updateGameState(gameState: GameState): void {
     console.log('DashboardScene updateGameState:', gameState);
     if (!gameState || !gameState.players) return;
+
+    // If game is already playing and music hasn't started, start it
+    if (gameState.gamePhase === 'playing' && !this.bgMusic) {
+      this.bgMusic = this.sound.add('bgmusic', {
+        loop: true,
+        volume: 0.3
+      });
+      this.bgMusic.play();
+    }
 
     // Update player IDs list for camera rotation
     this.playerIds = Object.keys(gameState.players);
@@ -185,6 +214,7 @@ export default class DashboardScene extends Phaser.Scene {
       if (!gameState.players[playerId]) {
         sprite.nameText?.destroy();
         sprite.gunSprite?.destroy();
+        sprite.deathText?.destroy();
         sprite.destroy();
         this.players.delete(playerId);
       }
@@ -197,8 +227,11 @@ export default class DashboardScene extends Phaser.Scene {
     this.focusOnFirstPlayerIfNeeded();
   }
 
-  updatePlayer(playerId: string, playerData: Player): void {
+  updatePlayer(playerId: string, playerData: any): void {
     let sprite = this.players.get(playerId);
+
+    // Check if player is dead
+    const isDead = playerData.isDead || playerData.health <= 0;
 
     if (!sprite) {
       // Create new player sprite
@@ -210,6 +243,7 @@ export default class DashboardScene extends Phaser.Scene {
       sprite.setScale(1);
       sprite.playerId = playerId;
       sprite.setDepth(10);
+      sprite.isDead = isDead;
 
       // Start with idle animation
       sprite.play('player-idle');
@@ -241,14 +275,29 @@ export default class DashboardScene extends Phaser.Scene {
       sprite.nameText = nameText;
 
       // Add gun sprite
-      const gunSprite = this.add.sprite(playerData.x, playerData.y, 'guns', 0);
+      const gunSprite = this.add.sprite(playerData.x, playerData.y, 'guns', playerData.currentGun || 0);
       gunSprite.setScale(1);
       gunSprite.setDepth(15);
       gunSprite.setOrigin(0.5, 0.5);
       sprite.gunSprite = gunSprite;
 
+      // Add death text (initially hidden)
+      const deathText = this.add.text(playerData.x, playerData.y, 'DEAD', {
+        fontSize: '12px',
+        color: '#ff0000',
+        backgroundColor: '#000000',
+        padding: { x: 4, y: 2 }
+      });
+      deathText.setOrigin(0.5, 0.5);
+      deathText.setDepth(20);
+      deathText.setVisible(false);
+      sprite.deathText = deathText;
+
       this.players.set(playerId, sprite);
     } else {
+      // Update death state
+      sprite.isDead = isDead;
+
       // Update existing player position with smooth interpolation
       this.tweens.add({
         targets: sprite,
@@ -259,9 +308,11 @@ export default class DashboardScene extends Phaser.Scene {
       });
 
       // Update animation based on player state
-      const animKey = playerData.animation === 'running' ? 'player-run' : 'player-idle';
-      if (!sprite.anims.currentAnim || sprite.anims.currentAnim.key !== animKey) {
-        sprite.play(animKey);
+      if (!isDead) {
+        const animKey = playerData.animation === 'running' ? 'player-run' : 'player-idle';
+        if (!sprite.anims.currentAnim || sprite.anims.currentAnim.key !== animKey) {
+          sprite.play(animKey);
+        }
       }
 
       // Update direction/flip
@@ -282,8 +333,12 @@ export default class DashboardScene extends Phaser.Scene {
         });
       }
 
-      // Update gun position
+      // Update gun sprite
       if (sprite.gunSprite) {
+        // Update gun frame/type
+        sprite.gunSprite.setFrame(playerData.currentGun || 0);
+
+        // Update gun position - gun should be at player position
         this.tweens.add({
           targets: sprite.gunSprite,
           x: playerData.x,
@@ -291,7 +346,40 @@ export default class DashboardScene extends Phaser.Scene {
           duration: 100,
           ease: 'Linear'
         });
+
+        // Update gun rotation
+        if (playerData.gunRotation !== undefined) {
+          sprite.gunSprite.setRotation(playerData.gunRotation);
+        }
+
+        // Update gun flip (use setFlipX, not setFlipY)
+        if (playerData.gunFlipped !== undefined) {
+          sprite.gunSprite.setFlipX(playerData.gunFlipped);
+        }
       }
+
+      // Update death text position
+      if (sprite.deathText) {
+        this.tweens.add({
+          targets: sprite.deathText,
+          x: playerData.x,
+          y: playerData.y,
+          duration: 100,
+          ease: 'Linear'
+        });
+      }
+    }
+
+    // Handle death/alive visualization
+    if (isDead) {
+      sprite.setAlpha(0.3);
+      sprite.stop();
+      if (sprite.gunSprite) sprite.gunSprite.setVisible(false);
+      if (sprite.deathText) sprite.deathText.setVisible(true);
+    } else {
+      sprite.setAlpha(1);
+      if (sprite.gunSprite) sprite.gunSprite.setVisible(true);
+      if (sprite.deathText) sprite.deathText.setVisible(false);
     }
   }
 
@@ -329,7 +417,7 @@ export default class DashboardScene extends Phaser.Scene {
     }
   }
 
-  focusOnPlayer(playerId: string): void {
+  public focusOnPlayer(playerId: string): void {
     const sprite = this.players.get(playerId);
     if (!sprite) return;
 
@@ -403,22 +491,208 @@ export default class DashboardScene extends Phaser.Scene {
     const playerCount = this.playerIds.length;
     const focusedPlayer = this.focusedPlayerId ? this.players.get(this.focusedPlayerId) : null;
     const focusedName = focusedPlayer?.nameText?.text || 'None';
-    
+
     this.spectatorInfoText.setText(
       `Spectator Mode | Players: ${playerCount} | Watching: ${focusedName}`
     );
   }
 
-  update(): void {
-    // Follow the focused player if we have one
-    if (this.focusedPlayerId) {
-      const sprite = this.players.get(this.focusedPlayerId);
-      if (sprite && sprite.nameText) {
-        // Update name text position to follow sprite
-        sprite.nameText.setPosition(sprite.x, sprite.y - 20);
+  public spawnBullet(data: any): void {
+    const { bulletId, ownerId, x, y, angle, gunType } = data;
+    console.log('DashboardScene spawnBullet called:', { bulletId, x, y, angle });
+
+    // Create bullet sprite (using 'bullets' key, not 'bullet')
+    const bullet = this.add.sprite(x, y, 'bullets', 0);
+    bullet.setScale(1);
+    bullet.setRotation(angle);
+    bullet.setDepth(9);
+
+    // Store bullet
+    this.bullets.set(bulletId, bullet);
+
+    // Calculate end position using angle (similar to MainScene)
+    const distance = 1500;
+    const bulletSpeed = 500; // pixels per second
+    const duration = distance / bulletSpeed * 1000;
+    const endX = x + Math.cos(angle) * distance;
+    const endY = y + Math.sin(angle) * distance;
+
+    // Move bullet
+    this.tweens.add({
+      targets: bullet,
+      x: endX,
+      y: endY,
+      duration: duration,
+      ease: 'Linear',
+      onComplete: () => {
+        this.destroyBullet(bulletId);
       }
-      if (sprite && sprite.gunSprite) {
-        sprite.gunSprite.setPosition(sprite.x, sprite.y);
+    });
+  }
+
+  public destroyBullet(bulletId: string): void {
+    const bullet = this.bullets.get(bulletId);
+    if (bullet) {
+      bullet.destroy();
+      this.bullets.delete(bulletId);
+    }
+  }
+
+  public handlePlayerHit(data: any): void {
+    const { targetPlayerId } = data;
+    const sprite = this.players.get(targetPlayerId);
+
+    if (sprite) {
+      // Store original tint
+      const originalTint = sprite.tintTopLeft;
+
+      // Flash white effect
+      sprite.setTintFill(0xffffff);
+
+      // Add camera shake if this is the focused player
+      if (this.focusedPlayerId === targetPlayerId) {
+        this.cameras.main.shake(100, 0.003);
+      }
+
+      this.time.delayedCall(100, () => {
+        if (sprite && sprite.active) {
+          // Restore original tint
+          if (originalTint !== 0xffffff) {
+            sprite.setTint(originalTint);
+          } else {
+            sprite.clearTint();
+          }
+        }
+      });
+    }
+  }
+
+  public handlePlayerDeath(playerId: string): void {
+    const sprite = this.players.get(playerId);
+    if (sprite) {
+      sprite.isDead = true;
+      sprite.setAlpha(0.3);
+      sprite.stop();
+      if (sprite.gunSprite) sprite.gunSprite.setVisible(false);
+      if (sprite.deathText) {
+        sprite.deathText.setVisible(true);
+        // Pulse effect on death text
+        this.tweens.add({
+          targets: sprite.deathText,
+          scaleX: 1.2,
+          scaleY: 1.2,
+          duration: 200,
+          yoyo: true,
+          repeat: 2
+        });
+      }
+    }
+  }
+
+  public handlePlayerRespawn(playerId: string, x: number, y: number): void {
+    const sprite = this.players.get(playerId);
+    if (sprite) {
+      sprite.isDead = false;
+      sprite.setAlpha(1);
+      sprite.setPosition(x, y);
+      if (sprite.gunSprite) {
+        sprite.gunSprite.setVisible(true);
+        sprite.gunSprite.setPosition(x, y);
+      }
+      if (sprite.deathText) {
+        sprite.deathText.setVisible(false);
+        sprite.deathText.setPosition(x, y);
+      }
+      if (sprite.nameText) {
+        sprite.nameText.setPosition(x, y - 20);
+      }
+
+      // Respawn effect
+      sprite.setScale(0);
+      this.tweens.add({
+        targets: sprite,
+        scaleX: 1,
+        scaleY: 1,
+        duration: 300,
+        ease: 'Back.easeOut'
+      });
+    }
+  }
+
+  public playCountdownAndStart(onComplete: () => void): void {
+    // Play countdown sound
+    const countdownSound = this.sound.add('countdown');
+    countdownSound.play();
+
+    // Show countdown text
+    const countdownText = this.add.text(
+      this.cameras.main.width / 2,
+      this.cameras.main.height / 2,
+      'Starting in 3...',
+      {
+        fontSize: '48px',
+        color: '#ffffff',
+        backgroundColor: '#000000',
+        padding: { x: 20, y: 10 }
+      }
+    );
+    countdownText.setOrigin(0.5, 0.5);
+    countdownText.setScrollFactor(0);
+    countdownText.setDepth(200);
+
+    // Countdown animation
+    let count = 3;
+    const countdownTimer = this.time.addEvent({
+      delay: 1000,
+      callback: () => {
+        count--;
+        if (count > 0) {
+          countdownText.setText(`Starting in ${count}...`);
+        } else if (count === 0) {
+          countdownText.setText('GO!');
+          // Play game start sound
+          const gamestartSound = this.sound.add('gamestart');
+          gamestartSound.play();
+
+          // Start background music on loop
+          if (!this.bgMusic) {
+            this.bgMusic = this.sound.add('bgmusic', {
+              loop: true,
+              volume: 0.3  // Set to 30% volume so it's not too loud
+            });
+            this.bgMusic.play();
+          }
+
+          // Remove countdown text after a moment
+          this.time.delayedCall(500, () => {
+            countdownText.destroy();
+            // Call the callback to actually start the game
+            onComplete();
+          });
+        }
+      },
+      repeat: 3
+    });
+  }
+
+  update(): void {
+    // Update all player-related sprites positions
+    for (const [playerId, sprite] of this.players) {
+      if (sprite && sprite.active) {
+        // Update name text position to follow sprite
+        if (sprite.nameText) {
+          sprite.nameText.setPosition(sprite.x, sprite.y - 20);
+        }
+
+        // Update gun sprite position to follow sprite (at player position)
+        if (sprite.gunSprite && sprite.gunSprite.visible) {
+          sprite.gunSprite.setPosition(sprite.x, sprite.y);
+        }
+
+        // Update death text position to follow sprite
+        if (sprite.deathText && sprite.deathText.visible) {
+          sprite.deathText.setPosition(sprite.x, sprite.y);
+        }
       }
     }
   }
@@ -427,6 +701,27 @@ export default class DashboardScene extends Phaser.Scene {
     if (this.cameraRotationTimer) {
       this.cameraRotationTimer.destroy();
     }
+
+    // Stop background music
+    if (this.bgMusic) {
+      this.bgMusic.stop();
+      this.bgMusic.destroy();
+      this.bgMusic = null;
+    }
+
+    // Clean up players
+    for (const [playerId, sprite] of this.players) {
+      if (sprite.nameText) sprite.nameText.destroy();
+      if (sprite.gunSprite) sprite.gunSprite.destroy();
+      if (sprite.deathText) sprite.deathText.destroy();
+      sprite.destroy();
+    }
     this.players.clear();
+
+    // Clean up bullets
+    for (const [bulletId, bullet] of this.bullets) {
+      bullet.destroy();
+    }
+    this.bullets.clear();
   }
 }

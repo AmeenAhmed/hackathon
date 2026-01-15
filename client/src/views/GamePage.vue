@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { usePlayerStore } from '../stores/playerStore';
 import { useWS } from '../composables/useWS';
 import GameManager from '../game/GameManager';
+import Quiz from '../components/Quiz.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -12,6 +13,7 @@ const ws = useWS();
 const gameManager = ref<GameManager | null>(null);
 const isLoading = ref(true);
 const error = ref<string | null>(null);
+const quizRef = ref<any>(null);
 
 const goHome = () => {
   if (router) {
@@ -69,8 +71,18 @@ onMounted(async () => {
       });
     }
 
-    // Make player store available to Phaser
+    // Make player store and quiz control available to Phaser
     (window as any).playerStore = playerStore;
+    (window as any).showDeathQuiz = () => {
+      if (quizRef.value) {
+        quizRef.value.startQuiz('death');
+      }
+    };
+    (window as any).showAmmoQuiz = () => {
+      if (quizRef.value) {
+        quizRef.value.startQuiz('ammo');
+      }
+    };
 
     // Set loading to false to render the game container
     isLoading.value = false;
@@ -92,6 +104,8 @@ onMounted(async () => {
       playerId as string,
       ws
     );
+    // Make gameManager globally available after it's created
+    (window as any).gameManager = gameManager.value;
     // console.log('Phaser game initialized');
 
     // Setup WebSocket listeners for game updates
@@ -104,6 +118,14 @@ onMounted(async () => {
     ws.on('initialState', (data: any) => {
       if (gameManager.value) {
         gameManager.value.handleGameUpdate(data.gameState);
+      }
+    });
+
+    ws.on('gameStarted', (data: any) => {
+      // console.log('GamePage received gameStarted event');
+      if (gameManager.value) {
+        // Update the game state to reflect that the game has started
+        gameManager.value.handleGameUpdate({ gamePhase: 'playing' });
       }
     });
   } catch (err) {
@@ -126,9 +148,21 @@ onUnmounted(() => {
     gameManager.value = null;
   }
 
-  // Clean up window reference
+  // Clean up window references
   if ((window as any).playerStore) {
     delete (window as any).playerStore;
+  }
+  if ((window as any).showDeathQuiz) {
+    delete (window as any).showDeathQuiz;
+  }
+  if ((window as any).showAmmoQuiz) {
+    delete (window as any).showAmmoQuiz;
+  }
+  if ((window as any).onQuizComplete) {
+    delete (window as any).onQuizComplete;
+  }
+  if ((window as any).gameManager) {
+    delete (window as any).gameManager;
   }
 });
 </script>
@@ -147,6 +181,9 @@ onUnmounted(() => {
     </div>
 
     <div v-else id="game-container" class="game-container"></div>
+
+    <!-- Unified Quiz Overlay -->
+    <Quiz ref="quizRef" />
   </div>
 </template>
 

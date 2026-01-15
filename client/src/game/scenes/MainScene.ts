@@ -17,17 +17,20 @@ interface Player {
   direction?: string;
   gunRotation?: number;
   gunFlipped?: boolean;
+  currentGun?: number;
 }
 
 interface PlayerSprite extends Phaser.Physics.Arcade.Sprite {
   playerId?: string;
   nameText?: Phaser.GameObjects.Text;
   gunSprite?: Phaser.GameObjects.Sprite;
+  isDead?: boolean;
+  isProtected?: boolean;
 }
 
 export default class MainScene extends Phaser.Scene {
-  private roomCode!: string;
-  private playerId!: string;
+  public roomCode!: string;
+  public playerId!: string;
   private ws!: any;
   private localPlayer!: PlayerSprite;
   private otherPlayers: Map<string, PlayerSprite>;
@@ -71,6 +74,29 @@ export default class MainScene extends Phaser.Scene {
   private bulletIdCounter: number = 0;
   private playerHealth: Map<string, number> = new Map(); // Track player health
   private otherPlayerBullets: Map<string, Phaser.GameObjects.Sprite> = new Map(); // Track other players' bullets
+  private isDead: boolean = false;
+  private isInAmmoQuiz: boolean = false;
+  private gameStarted: boolean = false; // Track if game has started
+
+  // Kill tracking
+  private killCount: number = 0;
+  private killStreak: number = 0;
+  private lastKillTime: number = 0;
+  private totalKills: number = 0;
+  private isFirstBlood: boolean = false;
+
+  // Ammo system
+  private ammo: { [key: number]: number } = {
+    0: 6,   // Pistol ammo
+    1: 4,   // Shotgun ammo
+    2: 15   // Uzi ammo
+  };
+  private maxAmmo: { [key: number]: number } = {
+    0: 6,   // Pistol max ammo
+    1: 8,   // Shotgun max ammo
+    2: 30   // Uzi max ammo
+  };
+  private isReloading: boolean = false;
 
   constructor(data: SceneData) {
     super({ key: 'MainScene' });
@@ -121,7 +147,7 @@ export default class MainScene extends Phaser.Scene {
       }
     });
 
-    // Create local player
+    // Create local player (always visible, even during waiting)
     this.createLocalPlayer();
 
     // Setup camera to follow player in the larger world
@@ -129,6 +155,7 @@ export default class MainScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.localPlayer, true, 1, 1); // Instant camera follow (no smoothing for performance)
     this.cameras.main.setZoom(this.currentZoom); // Zoom in closer to the player
     // this.cameras.main.setRoundPixels(true); // Disabled for performance
+
 
     // Setup input
     this.cursors = this.input.keyboard!.createCursorKeys();
@@ -160,47 +187,8 @@ export default class MainScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-TWO', () => this.switchGun(1));
     this.input.keyboard!.on('keydown-THREE', () => this.switchGun(2));
 
-    // Display room code
-    this.add.text(10, 10, `Room: ${this.roomCode}`, {
-      fontSize: '20px',
-      color: '#ffffff',
-      backgroundColor: '#000000',
-      padding: { x: 10, y: 5 }
-    }).setScrollFactor(0).setDepth(100);
-
-    // Display player ID
-    this.add.text(10, 40, `Player ID: ${this.playerId}`, {
-      fontSize: '16px',
-      color: '#ffffff',
-      backgroundColor: '#000000',
-      padding: { x: 10, y: 5 }
-    }).setScrollFactor(0).setDepth(100);
-
-    // Display controls
-    this.add.text(10, 70, 'Move: WASD/Arrows | Zoom: +/- | Aim: Mouse | Guns: 1-3', {
-      fontSize: '14px',
-      color: '#ffffff',
-      backgroundColor: '#000000',
-      padding: { x: 10, y: 5 }
-    }).setScrollFactor(0).setDepth(100);
-
-    // Display current gun
-    const gunText = this.add.text(10, 100, `Gun: Pistol`, {
-      fontSize: '14px',
-      color: '#ffff00',
-      backgroundColor: '#000000',
-      padding: { x: 10, y: 5 }
-    }).setScrollFactor(0).setDepth(100);
-    (this as any).gunText = gunText;
-
-    // Display player count
-    const playerCountText = this.add.text(10, 130, `Players: 1`, {
-      fontSize: '14px',
-      color: '#00ff00',
-      backgroundColor: '#000000',
-      padding: { x: 10, y: 5 }
-    }).setScrollFactor(0).setDepth(100);
-    (this as any).playerCountText = playerCountText;
+    // Start the UI scene in parallel
+    this.scene.launch('UIScene');
 
     // Add crosshair cursor
     this.input.setDefaultCursor('crosshair');
@@ -307,6 +295,7 @@ export default class MainScene extends Phaser.Scene {
     this.localPlayer.setScale(1); // Keep original 16x16 size
     this.localPlayer.playerId = this.playerId;
     this.localPlayer.setDepth(10); // Above terrain
+    this.localPlayer.setVisible(true); // Ensure player is visible
 
     // Start with idle animation
     this.localPlayer.play('player-idle');
@@ -328,6 +317,7 @@ export default class MainScene extends Phaser.Scene {
     });
     nameText.setOrigin(0.5, 0.5);
     nameText.setDepth(11); // Above player
+    nameText.setVisible(true); // Ensure name is visible
     this.localPlayer.nameText = nameText;
 
     // Add gun sprite (use frame 0, first gun)
@@ -335,7 +325,11 @@ export default class MainScene extends Phaser.Scene {
     gunSprite.setScale(1);
     gunSprite.setDepth(15); // Higher depth to ensure it's always on top
     gunSprite.setOrigin(0.5, 0.5);
+    gunSprite.setVisible(true); // Ensure gun is visible
     this.localPlayer.gunSprite = gunSprite;
+
+    // Initialize ammo UI
+    this.updateAmmoUI();
   }
 
   setupWebSocketListeners(): void {
@@ -354,12 +348,32 @@ export default class MainScene extends Phaser.Scene {
         if (this.scene.isActive()) {
           // console.log('Received initialState with players:', Object.keys(data.gameState?.players || {}));
           this.updateGameState(data.gameState);
+
+          // Check if game has already started
+          if (data.gameState?.gamePhase === 'playing') {
+            this.gameStarted = true;
+            const uiScene = this.scene.get('UIScene') as any;
+            if (uiScene && uiScene.setWaitingVisible) {
+              uiScene.setWaitingVisible(false);
+            }
+          }
         }
       });
 
       // Request initial state when joining (important for seeing existing players)
       // console.log('Requesting initial game state from server...');
       this.ws.send('getState', {});
+
+      // Listen for game started event
+      this.ws.on('gameStarted', (data: any) => {
+        if (this.scene.isActive()) {
+          this.gameStarted = true;
+          const uiScene = this.scene.get('UIScene') as any;
+          if (uiScene && uiScene.setWaitingVisible) {
+            uiScene.setWaitingVisible(false);
+          }
+        }
+      });
 
       // Listen for bullet spawns from other players
       this.ws.on('bulletSpawn', (data: any) => {
@@ -399,7 +413,18 @@ export default class MainScene extends Phaser.Scene {
   }
 
   updateGameState(gameState: any): void {
-    if (!gameState || !gameState.players) return;
+    if (!gameState) return;
+
+    // Check if game phase has changed
+    if (gameState.gamePhase === 'playing' && !this.gameStarted) {
+      this.gameStarted = true;
+      const uiScene = this.scene.get('UIScene') as any;
+      if (uiScene && uiScene.setWaitingVisible) {
+        uiScene.setWaitingVisible(false);
+      }
+    }
+
+    if (!gameState.players) return;
 
     // Make sure the scene is ready and physics is initialized
     if (!this.physics || !this.physics.world) {
@@ -412,9 +437,9 @@ export default class MainScene extends Phaser.Scene {
 
     // Update player count display
     const playerCount = Object.keys(gameState.players).length;
-    const playerCountText = (this as any).playerCountText;
-    if (playerCountText) {
-      playerCountText.setText(`Players: ${playerCount}`);
+    const uiScene = this.scene.get('UIScene') as any;
+    if (uiScene && uiScene.playerCountText) {
+      uiScene.playerCountText.setText(`Players: ${playerCount}`);
     }
 
     // Update other players
@@ -459,6 +484,7 @@ export default class MainScene extends Phaser.Scene {
       sprite.setCollideWorldBounds(true);
       sprite.setScale(1);
       sprite.playerId = playerId;
+      sprite.isDead = false; // Initialize as alive
       sprite.setDepth(10); // Same depth as local player
 
       // Start with idle animation
@@ -547,6 +573,25 @@ export default class MainScene extends Phaser.Scene {
         if (playerData.gunFlipped !== undefined) {
           sprite.gunSprite.setFlipX(playerData.gunFlipped);
         }
+        if (playerData.currentGun !== undefined) {
+          sprite.gunSprite.setFrame(playerData.currentGun);
+        }
+      }
+
+      // Handle protection state (in quiz or respawning)
+      if (playerData.isProtected !== undefined) {
+        sprite.isProtected = playerData.isProtected;
+
+        // Show semi-transparent if protected
+        if (playerData.isProtected) {
+          sprite.setAlpha(0.5);
+          sprite.nameText?.setAlpha(0.5);
+          sprite.gunSprite?.setAlpha(0.5);
+        } else {
+          sprite.setAlpha(1);
+          sprite.nameText?.setAlpha(1);
+          sprite.gunSprite?.setAlpha(1);
+        }
       }
     }
   }
@@ -566,6 +611,10 @@ export default class MainScene extends Phaser.Scene {
   update(time: number): void {
     if (!this.localPlayer || !this.localPlayer.body) return;
 
+    // Don't process input if dead and showing quiz
+    if (this.isDead) return;
+
+    // Movement is allowed even during waiting state
     // Handle player movement
     let velocityX = 0;
     let velocityY = 0;
@@ -654,8 +703,8 @@ export default class MainScene extends Phaser.Scene {
       }
     }
 
-    // Handle firing
-    if (this.isMouseDown) {
+    // Handle firing (only if game has started)
+    if (this.isMouseDown && this.gameStarted) {
       this.handleFiring(time);
     }
 
@@ -684,6 +733,11 @@ export default class MainScene extends Phaser.Scene {
 
         // Check collision with other players
         for (const [playerId, otherPlayer] of this.otherPlayers) {
+          // Skip dead or protected players - they're in quiz mode and shouldn't have collision
+          if (otherPlayer.isDead || otherPlayer.isProtected) {
+            continue;
+          }
+
           if (this.checkBulletPlayerCollision(bullet, otherPlayer)) {
             // Handle hit
             this.handleBulletHit(bullet, playerId, otherPlayer);
@@ -731,7 +785,9 @@ export default class MainScene extends Phaser.Scene {
         animation: animation,
         direction: direction,
         gunRotation: gunRotation,
-        gunFlipped: gunFlipped
+        gunFlipped: gunFlipped,
+        currentGun: this.currentGun,
+        isProtected: this.isDead || this.isInAmmoQuiz  // Add protection state
       });
     }
   }
@@ -743,6 +799,37 @@ export default class MainScene extends Phaser.Scene {
   }
 
   handleFiring(time: number): void {
+    // Don't allow firing if game hasn't started
+    if (!this.gameStarted) {
+      return;
+    }
+
+    // Check if we're reloading
+    if (this.isReloading) {
+      return;
+    }
+
+    // Check if current gun has ammo
+    if (this.ammo[this.currentGun] <= 0) {
+      // Check if ANY gun has ammo
+      const hasAnyAmmo = this.ammo[0] > 0 || this.ammo[1] > 0 || this.ammo[2] > 0;
+
+      if (!hasAnyAmmo) {
+        // All guns out of ammo, trigger reload quiz for all
+        this.triggerAmmoQuiz();
+      } else {
+        // Just this gun is out, show a message and try to auto-switch
+        // Try to switch to a gun with ammo
+        for (let i = 0; i < 3; i++) {
+          if (this.ammo[i] > 0 && i !== this.currentGun) {
+            this.switchGun(i);
+            break;
+          }
+        }
+      }
+      return;
+    }
+
     // Check fire rate cooldown
     if (time - this.lastFireTime < this.fireRates[this.currentGun]) {
       return;
@@ -763,6 +850,10 @@ export default class MainScene extends Phaser.Scene {
     switch (this.currentGun) {
       case 0: // Pistol - single shot
         this.fireBullet(playerX, playerY, baseAngle);
+        // Play pistol sound
+        this.sound.play('pistol-fire', { volume: 0.5 });
+        this.ammo[0]--;
+        this.updateAmmoUI();
         this.lastFireTime = time;
         break;
 
@@ -771,13 +862,21 @@ export default class MainScene extends Phaser.Scene {
         this.fireBullet(playerX, playerY, baseAngle - spreadAngle);
         this.fireBullet(playerX, playerY, baseAngle);
         this.fireBullet(playerX, playerY, baseAngle + spreadAngle);
+        // Play shotgun sound
+        this.sound.play('shotgun-fire', { volume: 0.6 });
+        this.ammo[1]--;
+        this.updateAmmoUI();
         this.lastFireTime = time;
         break;
 
       case 2: // Uzi - burst of 3 bullets
         if (this.uziBurstCount < 3) {
           this.fireBullet(playerX, playerY, baseAngle);
+          // Play uzi/pistol sound (slightly quieter for rapid fire)
+          this.sound.play('pistol-fire', { volume: 0.3 });
           this.uziBurstCount++;
+          this.ammo[2]--;
+          this.updateAmmoUI();
           this.lastFireTime = time;
         } else {
           // After 3 bullets, need longer cooldown before next burst
@@ -790,6 +889,11 @@ export default class MainScene extends Phaser.Scene {
   }
 
   fireBullet(x: number, y: number, angle: number): void {
+    // Don't create bullets if game hasn't started
+    if (!this.gameStarted) {
+      return;
+    }
+
     // Get or create a bullet from the pool
     let bullet = this.bullets.get(x, y, 'bullets', 0) as any;
 
@@ -852,12 +956,13 @@ export default class MainScene extends Phaser.Scene {
       this.localPlayer.gunSprite.setFrame(gunIndex);
     }
 
-    // Update gun text
+    // Update gun text and ammo
     const gunNames = ['Pistol', 'Shotgun', 'Uzi'];
-    const gunText = (this as any).gunText;
-    if (gunText) {
-      gunText.setText(`Gun: ${gunNames[gunIndex]}`);
+    const uiScene = this.scene.get('UIScene') as any;
+    if (uiScene && uiScene.gunText) {
+      uiScene.gunText.setText(`Gun: ${gunNames[gunIndex]}`);
     }
+    this.updateAmmoUI();
   }
 
   checkBulletPlayerCollision(bullet: any, player: PlayerSprite): boolean {
@@ -903,9 +1008,14 @@ export default class MainScene extends Phaser.Scene {
     // Destroy the bullet
     this.destroyBullet(bullet);
 
-    // Handle death
+    // If target died, send death message and handle kill
     if (health <= 0) {
-      this.handlePlayerDeath(targetPlayerId, targetPlayer);
+      this.ws.send('playerDeath', {
+        playerId: targetPlayerId
+      });
+
+      // Handle kill tracking and announcements
+      this.handleKill();
     }
   }
 
@@ -929,44 +1039,6 @@ export default class MainScene extends Phaser.Scene {
     return undefined; // Placeholder for now
   }
 
-  handlePlayerDeath(playerId: string, player: PlayerSprite): void {
-    // Send death message
-    this.ws.send('playerDeath', {
-      playerId: playerId
-    });
-
-    // Make player invisible and disable
-    player.setVisible(false);
-    player.nameText?.setVisible(false);
-    player.gunSprite?.setVisible(false);
-
-    // Respawn after 3 seconds
-    this.time.delayedCall(3000, () => {
-      this.respawnPlayer(playerId, player);
-    });
-  }
-
-  respawnPlayer(playerId: string, player: PlayerSprite): void {
-    // Reset health
-    this.playerHealth.set(playerId, 100);
-
-    // Reset position to spawn point
-    const spawnX = this.worldWidth / 2;
-    const spawnY = this.worldHeight / 2;
-    player.setPosition(spawnX, spawnY);
-
-    // Make visible again
-    player.setVisible(true);
-    player.nameText?.setVisible(true);
-    player.gunSprite?.setVisible(true);
-
-    // Send respawn message
-    this.ws.send('playerRespawn', {
-      playerId: playerId,
-      x: spawnX,
-      y: spawnY
-    });
-  }
 
   spawnOtherPlayerBullet(data: any): void {
     // Create bullet for other player
@@ -1025,10 +1097,49 @@ export default class MainScene extends Phaser.Scene {
 
   handleRemotePlayerDeath(data: any): void {
     if (data.playerId === this.playerId) {
-      // Local player died
+      // Local player died - show quiz
       this.localPlayer.setVisible(false);
       this.localPlayer.nameText?.setVisible(false);
       this.localPlayer.gunSprite?.setVisible(false);
+
+      // Mark as dead
+      this.isDead = true;
+
+      // Reset kill streak on death
+      this.killStreak = 0;
+
+      // Show the Vue quiz component
+      if ((window as any).showDeathQuiz) {
+        (window as any).showDeathQuiz();
+      }
+
+      // Set up quiz completion callback
+      (window as any).onQuizComplete = () => {
+        // Respawn the player
+        const spawnX = this.worldWidth / 2;
+        const spawnY = this.worldHeight / 2;
+
+        this.localPlayer.setPosition(spawnX, spawnY);
+        this.localPlayer.setVisible(true);
+        this.localPlayer.nameText?.setVisible(true);
+        this.localPlayer.gunSprite?.setVisible(true);
+
+        this.isDead = false;
+        this.playerHealth.set(this.playerId, 100);
+
+        // Reset ammo on respawn (to starting values, not max)
+        this.ammo[0] = 6;   // Pistol starting ammo
+        this.ammo[1] = 4;   // Shotgun starting ammo
+        this.ammo[2] = 15;  // Uzi starting ammo
+        this.updateAmmoUI();
+
+        // Send respawn message
+        this.ws.send('playerRespawn', {
+          playerId: this.playerId,
+          x: spawnX,
+          y: spawnY
+        });
+      };
     } else {
       // Other player died
       const otherPlayer = this.otherPlayers.get(data.playerId);
@@ -1036,8 +1147,96 @@ export default class MainScene extends Phaser.Scene {
         otherPlayer.setVisible(false);
         otherPlayer.nameText?.setVisible(false);
         otherPlayer.gunSprite?.setVisible(false);
+        // Mark other player as dead
+        otherPlayer.isDead = true;
       }
     }
+  }
+
+  handleKill(): void {
+    const currentTime = this.time.now;
+
+    // Update kill counts
+    this.totalKills++;
+
+    // Check if it's a streak (within 5 seconds of last kill)
+    if (currentTime - this.lastKillTime < 5000) {
+      this.killStreak++;
+    } else {
+      this.killStreak = 1;
+    }
+    this.lastKillTime = currentTime;
+
+    // Play appropriate announcement based on kill streak and total kills
+    if (this.totalKills === 1 && !this.isFirstBlood) {
+      this.isFirstBlood = true;
+      this.sound.play('firstblood', { volume: 0.7 });
+    } else if (this.killStreak === 2) {
+      this.sound.play('doublekill', { volume: 0.7 });
+    } else if (this.killStreak === 3) {
+      this.sound.play('triplekill', { volume: 0.7 });
+    } else if (this.killStreak === 5) {
+      this.sound.play('killingspree', { volume: 0.7 });
+    } else if (this.killStreak === 7) {
+      this.sound.play('rampage', { volume: 0.7 });
+    } else if (this.killStreak === 9) {
+      this.sound.play('dominating', { volume: 0.7 });
+    } else if (this.killStreak === 11) {
+      this.sound.play('megakill', { volume: 0.7 });
+    } else if (this.killStreak === 13) {
+      this.sound.play('ownage', { volume: 0.7 });
+    } else if (this.killStreak === 15) {
+      this.sound.play('massacre', { volume: 0.7 });
+    } else if (this.killStreak === 17) {
+      this.sound.play('carnage', { volume: 0.7 });
+    } else if (this.killStreak === 19) {
+      this.sound.play('mayhem', { volume: 0.7 });
+    } else if (this.killStreak >= 20) {
+      this.sound.play('godlike', { volume: 0.7 });
+    }
+
+    // Display kill streak text (optional visual feedback)
+    if (this.killStreak >= 2) {
+      const streakText = this.add.text(
+        this.cameras.main.width / 2,
+        100,
+        `${this.getStreakName(this.killStreak)}!`,
+        {
+          fontSize: '32px',
+          color: '#ffff00',
+          fontStyle: 'bold'
+        }
+      );
+      streakText.setOrigin(0.5, 0.5);
+      streakText.setScrollFactor(0);
+      streakText.setDepth(100);
+
+      // Fade out and destroy after 2 seconds
+      this.tweens.add({
+        targets: streakText,
+        alpha: 0,
+        duration: 2000,
+        ease: 'Power2',
+        onComplete: () => {
+          streakText.destroy();
+        }
+      });
+    }
+  }
+
+  getStreakName(streak: number): string {
+    if (streak === 2) return 'DOUBLE KILL';
+    if (streak === 3) return 'TRIPLE KILL';
+    if (streak === 5) return 'KILLING SPREE';
+    if (streak === 7) return 'RAMPAGE';
+    if (streak === 9) return 'DOMINATING';
+    if (streak === 11) return 'MEGA KILL';
+    if (streak === 13) return 'OWNAGE';
+    if (streak === 15) return 'MASSACRE';
+    if (streak === 17) return 'CARNAGE';
+    if (streak === 19) return 'MAYHEM';
+    if (streak >= 20) return 'GODLIKE';
+    return '';
   }
 
   handleRemotePlayerRespawn(data: any): void {
@@ -1056,8 +1255,62 @@ export default class MainScene extends Phaser.Scene {
         otherPlayer.setVisible(true);
         otherPlayer.nameText?.setVisible(true);
         otherPlayer.gunSprite?.setVisible(true);
+        // Clear dead state
+        otherPlayer.isDead = false;
         this.playerHealth.set(data.playerId, 100);
       }
     }
+  }
+
+  updateAmmoUI(): void {
+    const uiScene = this.scene.get('UIScene') as any;
+    if (uiScene && uiScene.ammoText) {
+      const ammoCount = this.ammo[this.currentGun];
+      const maxAmmo = this.maxAmmo[this.currentGun];
+      const text = ammoCount > 0 ? `Ammo: ${ammoCount}/${maxAmmo}` : 'Ammo: EMPTY';
+      uiScene.ammoText.setText(text);
+
+      // Change color based on ammo status
+      if (ammoCount === 0) {
+        uiScene.ammoText.setColor('#ff0000'); // Red for empty
+      } else if (ammoCount <= maxAmmo / 4) {
+        uiScene.ammoText.setColor('#ffaa00'); // Orange for low
+      } else {
+        uiScene.ammoText.setColor('#ff9900'); // Normal orange
+      }
+    }
+  }
+
+  triggerAmmoQuiz(): void {
+    if (this.isReloading) return;
+
+    this.isReloading = true;
+    this.isInAmmoQuiz = true;
+
+    // Make player semi-transparent to indicate protection
+    this.localPlayer.setAlpha(0.5);
+    this.localPlayer.nameText?.setAlpha(0.5);
+    this.localPlayer.gunSprite?.setAlpha(0.5);
+
+    // Trigger the ammo quiz via global function
+    if ((window as any).showAmmoQuiz) {
+      (window as any).showAmmoQuiz();
+    }
+  }
+
+  reloadAmmo(): void {
+    // Called when quiz is completed successfully - reload ALL guns
+    this.ammo[0] = this.maxAmmo[0];
+    this.ammo[1] = this.maxAmmo[1];
+    this.ammo[2] = this.maxAmmo[2];
+    this.isReloading = false;
+    this.isInAmmoQuiz = false;
+
+    // Restore player opacity
+    this.localPlayer.setAlpha(1);
+    this.localPlayer.nameText?.setAlpha(1);
+    this.localPlayer.gunSprite?.setAlpha(1);
+
+    this.updateAmmoUI();
   }
 }

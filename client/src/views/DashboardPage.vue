@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { useGameStore } from '../stores/gameStore';
 import { useWS } from '../composables/useWS';
 import DashboardManager from '../game/DashboardManager';
 import type { Player } from '../types';
 
+const route = useRoute();
 const gameStore = useGameStore();
 const ws = useWS();
 const dashboardManager = new DashboardManager();
+const gamePhase = ref('waiting');
+const isStarting = ref(false);
 
 // Computed leaderboard from game state
 const leaderboard = computed(() => {
@@ -37,20 +41,45 @@ function formatTime(seconds: number): string {
 }
 
 // Initialize dashboard
-onMounted(() => {
+onMounted(async () => {
+  const code = route.params.code as string;
+
+  // Validate room code
+  if (!code) {
+    console.error('No room code provided');
+    return;
+  }
+
   // Initialize WebSocket connection first
   ws.init();
 
-  // Setup WebSocket listener for game updates
+  // Setup WebSocket listeners before sending rejoin
+  ws.on('rejoinedDashboard', (data: any) => {
+    console.log('Dashboard rejoined successfully:', data);
+    if (data.gameState) {
+      gameStore.setGameState(data.gameState);
+      dashboardManager.handleGameUpdate(data.gameState);
+      if (data.gameState.gamePhase) {
+        gamePhase.value = data.gameState.gamePhase;
+      }
+    }
+  });
+
   ws.on('gameUpdate', (data: any) => {
     console.log('Dashboard received gameUpdate:', data);
     if (data.gameState) {
       gameStore.setGameState(data.gameState);
       dashboardManager.handleGameUpdate(data.gameState);
+      if (data.gameState.gamePhase) {
+        gamePhase.value = data.gameState.gamePhase;
+      }
     } else if (data) {
       // Handle case where gameState is at root level
       gameStore.setGameState(data);
       dashboardManager.handleGameUpdate(data);
+      if (data.gamePhase) {
+        gamePhase.value = data.gamePhase;
+      }
     }
   });
 
@@ -59,11 +88,54 @@ onMounted(() => {
     if (data.gameState) {
       gameStore.setGameState(data.gameState);
       dashboardManager.handleGameUpdate(data.gameState);
+      if (data.gameState.gamePhase) {
+        gamePhase.value = data.gameState.gamePhase;
+      }
     } else if (data) {
       gameStore.setGameState(data);
       dashboardManager.handleGameUpdate(data);
+      if (data.gamePhase) {
+        gamePhase.value = data.gamePhase;
+      }
     }
   });
+
+  ws.on('gameStarted', (data: any) => {
+    console.log('Game started:', data);
+    gamePhase.value = 'playing';
+  });
+
+  // Listen for bullet events and forward to dashboard
+  ws.on('bulletSpawn', (data: any) => {
+    console.log('Dashboard received bulletSpawn:', data);
+    dashboardManager.handleBulletSpawn(data);
+  });
+
+  ws.on('bulletDestroy', (data: any) => {
+    console.log('Dashboard received bulletDestroy:', data);
+    dashboardManager.handleBulletDestroy(data);
+  });
+
+  ws.on('playerHit', (data: any) => {
+    console.log('Dashboard received playerHit:', data);
+    dashboardManager.handlePlayerHit(data);
+  });
+
+  ws.on('playerDeath', (data: any) => {
+    console.log('Dashboard received playerDeath:', data);
+    dashboardManager.handlePlayerDeath(data);
+  });
+
+  ws.on('playerRespawn', (data: any) => {
+    console.log('Dashboard received playerRespawn:', data);
+    dashboardManager.handlePlayerRespawn(data);
+  });
+
+  // Send rejoin request for dashboard
+  setTimeout(() => {
+    console.log('Sending dashboard rejoin request:', { code });
+    ws.send('rejoinDashboard', { code });
+  }, 200);
 
   // Initialize the Phaser game for spectator view
   dashboardManager.init(ws);
@@ -77,6 +149,19 @@ onUnmounted(() => {
 // Focus on a specific player when clicking leaderboard
 function focusOnPlayer(playerId: string) {
   dashboardManager.focusOnPlayer(playerId);
+}
+
+// Start the game with countdown
+function startGame() {
+  if (isStarting.value) return; // Prevent multiple clicks
+
+  isStarting.value = true;
+
+  // Play countdown on dashboard, then start the actual game
+  dashboardManager.playCountdownAndStart(() => {
+    ws.send('startGame', {});
+    isStarting.value = false;
+  });
 }
 </script>
 
@@ -96,16 +181,46 @@ function focusOnPlayer(playerId: string) {
         </h1>
       </div>
 
-      <!-- Global Timer -->
-      <div class="flex items-center gap-3 bg-slate-700/50 px-4 py-2 rounded-lg border border-slate-600">
-        <div class="flex items-center gap-2">
-          <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      <!-- Global Timer and Start Button -->
+      <div class="flex items-center gap-4">
+        <!-- Start Game Button (shows when game is waiting) -->
+        <button
+          v-if="gamePhase === 'waiting'"
+          @click="startGame"
+          :disabled="isStarting"
+          :class="{
+            'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700': !isStarting,
+            'bg-gradient-to-r from-gray-500 to-gray-600 cursor-not-allowed': isStarting
+          }"
+          class="px-6 py-2 rounded-lg text-white font-semibold transition-all flex items-center gap-2 shadow-lg"
+        >
+          <svg v-if="!isStarting" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span class="text-slate-400 text-sm font-medium">Round Timer</span>
+          <svg v-else class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" stroke-dasharray="31.4 31.4" />
+          </svg>
+          {{ isStarting ? 'Starting...' : 'Start Game' }}
+        </button>
+
+        <!-- Game Status (shows when game is playing) -->
+        <div v-if="gamePhase === 'playing'" class="bg-green-500/20 px-4 py-2 rounded-lg border border-green-500/50 flex items-center gap-2">
+          <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          <span class="text-green-400 font-medium">Game In Progress</span>
         </div>
-        <div class="text-2xl font-mono font-bold text-white tabular-nums">
-          {{ formatTime(globalTimer) }}
+
+        <!-- Timer -->
+        <div class="flex items-center gap-3 bg-slate-700/50 px-4 py-2 rounded-lg border border-slate-600">
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="text-slate-400 text-sm font-medium">Round Timer</span>
+          </div>
+          <div class="text-2xl font-mono font-bold text-white tabular-nums">
+            {{ formatTime(globalTimer) }}
+          </div>
         </div>
       </div>
 

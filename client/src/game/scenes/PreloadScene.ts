@@ -95,6 +95,24 @@ export default class PreloadScene extends Phaser.Scene {
       spacing: 0
     });
 
+    // Load weapon sounds
+    this.load.audio('pistol-fire', '/assets/sounds/pistol.wav');
+    this.load.audio('shotgun-fire', '/assets/sounds/shotgun.wav');
+
+    // Load kill streak sounds
+    this.load.audio('firstblood', '/assets/sounds/FirstBlood.wav');
+    this.load.audio('doublekill', '/assets/sounds/DoubleKill.wav');
+    this.load.audio('triplekill', '/assets/sounds/TripleKill.wav');
+    this.load.audio('killingspree', '/assets/sounds/KillingSpree.wav');
+    this.load.audio('rampage', '/assets/sounds/Rampage.wav');
+    this.load.audio('dominating', '/assets/sounds/Dominating.wav');
+    this.load.audio('megakill', '/assets/sounds/MegaKill.wav');
+    this.load.audio('godlike', '/assets/sounds/Godlike.wav');
+    this.load.audio('ownage', '/assets/sounds/Ownage.wav');
+    this.load.audio('massacre', '/assets/sounds/Massacre.wav');
+    this.load.audio('carnage', '/assets/sounds/Carnage.wav');
+    this.load.audio('mayhem', '/assets/sounds/Mayhem.wav');
+
     // Set textures to use nearest neighbor filtering after load
     this.load.on('filecomplete-spritesheet-terrain-tiles', () => {
       const texture = this.textures.get('terrain-tiles');

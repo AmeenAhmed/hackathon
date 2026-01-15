@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import MainScene from './scenes/MainScene';
 import PreloadScene from './scenes/PreloadScene';
+import UIScene from './scenes/UIScene';
 
 export default class GameManager {
   private game: Phaser.Game | null = null;
@@ -68,7 +69,8 @@ export default class GameManager {
         roomCode: this.roomCode,
         playerId: this.playerId,
         ws: this.ws
-      })
+      }),
+      new UIScene()
     ];
 
     // console.log('Creating Phaser game with config:', this.config);

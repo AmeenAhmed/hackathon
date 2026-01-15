@@ -30,6 +30,7 @@ type Player struct {
 	Direction   string  `json:"direction"`
 	GunRotation float64 `json:"gunRotation"`
 	GunFlipped  bool    `json:"gunFlipped"`
+	CurrentGun  int     `json:"currentGun"`
 	IsProtected bool    `json:"isProtected"`
 }
 
@@ -266,6 +267,7 @@ func (r *Room) broadcastToOthers(senderID string, message interface{}) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
+	// Send to all players except the sender
 	for id, client := range r.Players {
 		if id != senderID && client != nil {
 			select {
@@ -273,6 +275,15 @@ func (r *Room) broadcastToOthers(senderID string, message interface{}) {
 			default:
 				// Client's send channel is full, skip
 			}
+		}
+	}
+
+	// Also send to dashboard
+	if r.Dashboard != nil {
+		select {
+		case r.Dashboard.Send <- data:
+		default:
+			// Dashboard's send channel is full, skip
 		}
 	}
 }
@@ -349,7 +360,7 @@ func (r *Room) broadcastToClients(message []byte) {
 	}
 }
 
-func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation string, direction string, gunRotation float64, gunFlipped bool) {
+func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation string, direction string, gunRotation float64, gunFlipped bool, currentGun int) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -362,6 +373,7 @@ func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation str
 		player.Direction = direction
 		player.GunRotation = gunRotation
 		player.GunFlipped = gunFlipped
+		player.CurrentGun = currentGun
 		r.LastUpdate = time.Now()
 
 		// Verify the update actually happened
@@ -478,6 +490,9 @@ func (c *Client) handleMessage(msg Message) {
 	case "createRoom":
 		c.handleCreateRoom()
 
+	case "startGame":
+		c.handleStartGame()
+
 	case "joinRoom":
 		var data struct {
 			Code string `json:"code"`
@@ -498,12 +513,13 @@ func (c *Client) handleMessage(msg Message) {
 			Direction   string  `json:"direction"`
 			GunRotation float64 `json:"gunRotation"`
 			GunFlipped  bool    `json:"gunFlipped"`
+			CurrentGun  int     `json:"currentGun"`
 		}
 		if err := json.Unmarshal(msg.Content, &data); err != nil {
 			log.Printf("Error parsing updatePosition message: %v", err)
 			return
 		}
-		c.handleUpdatePosition(data.X, data.Y, data.Animation, data.Direction, data.GunRotation, data.GunFlipped)
+		c.handleUpdatePosition(data.X, data.Y, data.Animation, data.Direction, data.GunRotation, data.GunFlipped, data.CurrentGun)
 
 	case "bulletSpawn":
 		var data struct {
@@ -588,6 +604,16 @@ func (c *Client) handleMessage(msg Message) {
 		}
 		c.handleRejoinRoom(data.Code, data.PlayerID)
 
+	case "rejoinDashboard":
+		var data struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal(msg.Content, &data); err != nil {
+			log.Printf("Error parsing rejoinDashboard message: %v", err)
+			return
+		}
+		c.handleRejoinDashboard(data.Code)
+
 	case "getState":
 		// Send current game state to the requesting client
 		c.handleGetState()
@@ -611,6 +637,39 @@ func (c *Client) handleCreateRoom() {
 
 	data, _ := json.Marshal(response)
 	c.Send <- data
+}
+
+func (c *Client) handleStartGame() {
+	// Only dashboard can start the game
+	if !c.IsDashboard {
+		log.Printf("Non-dashboard client tried to start game")
+		return
+	}
+
+	room, exists := roomManager.GetRoom(c.RoomCode)
+	if !exists {
+		log.Printf("Room not found for start game: %s", c.RoomCode)
+		return
+	}
+
+	// Update game phase to playing
+	room.mutex.Lock()
+	room.GameState.GamePhase = "playing"
+	room.mutex.Unlock()
+
+	// Broadcast game started to all clients
+	response := struct {
+		Type      string `json:"type"`
+		GamePhase string `json:"gamePhase"`
+	}{
+		Type:      "gameStarted",
+		GamePhase: "playing",
+	}
+
+	data, _ := json.Marshal(response)
+	room.broadcastToAll(data)
+
+	log.Printf("Game started in room %s", c.RoomCode)
 }
 
 func (c *Client) handleJoinRoom(code string, playerName string) {
@@ -734,7 +793,48 @@ func (c *Client) handleRejoinRoom(code string, playerID string) {
 	c.Send <- data
 }
 
-func (c *Client) handleUpdatePosition(x, y float64, animation string, direction string, gunRotation float64, gunFlipped bool) {
+func (c *Client) handleRejoinDashboard(code string) {
+	room, exists := roomManager.GetRoom(code)
+	if !exists {
+		response := struct {
+			Type  string `json:"type"`
+			Error string `json:"error"`
+		}{
+			Type:  "error",
+			Error: "Room not found",
+		}
+		data, _ := json.Marshal(response)
+		c.Send <- data
+		return
+	}
+
+	// Mark this client as a dashboard
+	c.IsDashboard = true
+	c.RoomCode = code
+
+	// Register the dashboard with the room
+	room.register <- c
+
+	// Send current game state to dashboard
+	room.mutex.RLock()
+	gameStateCopy := room.GameState
+	room.mutex.RUnlock()
+
+	response := struct {
+		Type      string     `json:"type"`
+		GameState *GameState `json:"gameState"`
+	}{
+		Type:      "rejoinedDashboard",
+		GameState: &gameStateCopy,
+	}
+
+	data, _ := json.Marshal(response)
+	c.Send <- data
+
+	log.Printf("Dashboard rejoined room %s", code)
+}
+
+func (c *Client) handleUpdatePosition(x, y float64, animation string, direction string, gunRotation float64, gunFlipped bool, currentGun int) {
 	if c.RoomCode == "" || c.Player == nil {
 		return
 	}
@@ -744,7 +844,7 @@ func (c *Client) handleUpdatePosition(x, y float64, animation string, direction 
 		return
 	}
 
-	room.updatePlayerPosition(c.ID, x, y, animation, direction, gunRotation, gunFlipped)
+	room.updatePlayerPosition(c.ID, x, y, animation, direction, gunRotation, gunFlipped, currentGun)
 }
 
 func (c *Client) handleBulletSpawn(bulletID string, x, y, velocityX, velocityY, angle float64, gunType int) {

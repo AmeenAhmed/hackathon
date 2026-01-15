@@ -1,4 +1,5 @@
 import Sockette from "sockette";
+import { getWebSocketUrl } from '../config/websocket';
 
 let ws: Sockette | null = null;
 const subscriptions: Record<string, Array<Function>> = {};
@@ -6,7 +7,7 @@ const subscriptions: Record<string, Array<Function>> = {};
 export function useWS() {
  
   function init() {
-    ws = new Sockette('ws://localhost:8080/ws', {
+    ws = new Sockette(getWebSocketUrl(), {
       timeout: 5e3,
       maxAttempts: 10,
       onopen: e => {}, // console.log('Connected!', e),
