@@ -145,11 +145,8 @@ func (rm *RoomManager) CreateRoom() *Room {
 			Score:     make(map[string]int),
 		},
 		MapData: MapData{
-			Width:       1920,
-			Height:      1080,
-			Obstacles:   []Obstacle{},
-			SafeZones:   []Zone{},
-			DangerZones: []Zone{},
+			Width:  1920,
+			Height: 1080,
 		},
 	}
 
