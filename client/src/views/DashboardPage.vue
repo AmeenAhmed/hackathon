@@ -15,6 +15,11 @@ const gamePhase = ref('waiting');
 const isStarting = ref(false);
 const errorMessage = ref<string | null>(null);
 
+// Global game timer (5 minutes = 300 seconds)
+const GAME_DURATION = 300;
+const gameTimer = ref(GAME_DURATION);
+let timerInterval: ReturnType<typeof setInterval> | null = null;
+
 // Check if we have enough players to start
 const canStartGame = computed(() => {
   const playerCount = Object.keys(gameStore.players).length;
@@ -38,14 +43,48 @@ const leaderboard = computed(() => {
     .map((player, index) => ({ ...player, rank: index + 1 }));
 });
 
-// Timer from game state
-const globalTimer = computed(() => gameStore.timer);
-
 // Format timer as MM:SS
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Start the game timer
+function startGameTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+  }
+  
+  gameTimer.value = GAME_DURATION;
+  // Send initial timer to server
+  ws.send('updateTimer', { timer: gameTimer.value });
+  
+  timerInterval = setInterval(() => {
+    if (gameTimer.value > 0) {
+      gameTimer.value--;
+      // Send timer update to server so players can see it
+      ws.send('updateTimer', { timer: gameTimer.value });
+    } else {
+      // Timer reached 0, end the game
+      endGame();
+    }
+  }, 1000);
+}
+
+// Stop the game timer
+function stopGameTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
+
+// End the game
+function endGame() {
+  stopGameTimer();
+  ws.send('endGame', {});
+  gamePhase.value = 'ended';
 }
 
 // Initialize dashboard
@@ -69,6 +108,10 @@ onMounted(async () => {
       dashboardManager.handleGameUpdate(data.gameState);
       if (data.gameState.gamePhase) {
         gamePhase.value = data.gameState.gamePhase;
+        // If rejoining during an active game, start the timer
+        if (data.gameState.gamePhase === 'playing' && !timerInterval) {
+          startGameTimer();
+        }
       }
     }
     // Store terrain data for dashboard to use
@@ -115,6 +158,14 @@ onMounted(async () => {
   ws.on('gameStarted', (data: any) => {
     console.log('Game started:', data);
     gamePhase.value = 'playing';
+    // Start the 5-minute game timer
+    startGameTimer();
+  });
+
+  ws.on('gameEnded', (data: any) => {
+    console.log('Game ended:', data);
+    gamePhase.value = 'ended';
+    stopGameTimer();
   });
 
   // Listen for bullet events and forward to dashboard
@@ -168,6 +219,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  stopGameTimer();
   dashboardManager.destroy();
   ws.close();
 });
@@ -187,6 +239,9 @@ function startGame() {
   dashboardManager.playCountdownAndStart(() => {
     ws.send('startGame', {});
     isStarting.value = false;
+    // Start the 5-minute game timer immediately
+    gamePhase.value = 'playing';
+    startGameTimer();
   });
 }
 </script>
@@ -274,15 +329,34 @@ function startGame() {
           <div class="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
           <span class="text-emerald-400 font-bold text-lg uppercase tracking-wide">Game In Progress</span>
         </div>
+
+        <!-- Game Ended Status -->
+        <div v-if="gamePhase === 'ended'" class="bg-red-500/10 backdrop-blur-sm px-5 py-2.5 rounded-xl border border-red-500/30 flex items-center gap-3">
+          <div class="w-3 h-3 bg-red-400 rounded-full"></div>
+          <span class="text-red-400 font-bold text-lg uppercase tracking-wide">Game Ended</span>
+        </div>
       </div>
 
       <!-- Global Timer -->
-      <div class="flex items-center gap-3 bg-slate-800/60 backdrop-blur-sm px-5 py-2.5 rounded-xl border border-slate-700/50">
-        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div 
+        class="flex items-center gap-3 backdrop-blur-sm px-5 py-2.5 rounded-xl border"
+        :class="{
+          'bg-slate-800/60 border-slate-700/50': gameTimer > 60,
+          'bg-red-900/60 border-red-500/50': gameTimer <= 60 && gameTimer > 0,
+          'bg-red-900/80 border-red-500/70': gameTimer === 0
+        }"
+      >
+        <svg class="w-5 h-5" :class="gameTimer <= 60 ? 'text-red-400' : 'text-amber-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <div class="text-3xl font-bold text-white tabular-nums tracking-wider">
-          {{ formatTime(globalTimer) }}
+        <div 
+          class="text-3xl font-bold tabular-nums tracking-wider"
+          :class="{
+            'text-white': gameTimer > 60,
+            'text-red-400 animate-pulse': gameTimer <= 60
+          }"
+        >
+          {{ formatTime(gameTimer) }}
         </div>
       </div>
     </header>
@@ -375,6 +449,76 @@ function startGame() {
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
         </svg>
         <span class="text-fuchsia-400 text-sm font-bold tracking-wide uppercase">Spectator Mode</span>
+      </div>
+
+      <!-- Game Ended Overlay -->
+      <div v-if="gamePhase === 'ended'" class="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-slate-900/90 backdrop-blur-xl rounded-3xl border border-slate-700/50 p-8 max-w-lg w-full mx-4 shadow-2xl">
+          <div class="text-center mb-6">
+            <div class="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
+              <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+              </svg>
+            </div>
+            <h2 class="text-4xl font-bold text-white mb-2 uppercase tracking-wider">Game Over!</h2>
+            <p class="text-slate-400 text-lg">Final Standings</p>
+          </div>
+
+          <!-- Top 3 Players -->
+          <div class="space-y-3 mb-6">
+            <div
+              v-for="(player, index) in leaderboard.slice(0, 3)"
+              :key="player.id"
+              class="flex items-center gap-4 p-4 rounded-xl"
+              :class="{
+                'bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30': index === 0,
+                'bg-gradient-to-r from-slate-400/20 to-slate-500/20 border border-slate-400/30': index === 1,
+                'bg-gradient-to-r from-orange-600/20 to-orange-700/20 border border-orange-600/30': index === 2
+              }"
+            >
+              <!-- Rank -->
+              <div
+                class="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shrink-0"
+                :class="{
+                  'bg-gradient-to-br from-amber-400 to-orange-500 text-black': index === 0,
+                  'bg-gradient-to-br from-slate-300 to-slate-400 text-black': index === 1,
+                  'bg-gradient-to-br from-orange-500 to-orange-600 text-black': index === 2
+                }"
+              >
+                {{ index + 1 }}
+              </div>
+
+              <!-- Player Info -->
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <div
+                    class="w-4 h-4 rounded-full shrink-0"
+                    :style="{ backgroundColor: player.color }"
+                  ></div>
+                  <span class="text-white font-bold text-lg truncate">{{ player.name }}</span>
+                </div>
+              </div>
+
+              <!-- Score -->
+              <div class="text-right">
+                <span class="text-2xl font-bold" :class="{
+                  'text-amber-400': index === 0,
+                  'text-slate-300': index === 1,
+                  'text-orange-400': index === 2
+                }">{{ player.score.toLocaleString() }}</span>
+                <span class="text-slate-500 text-sm ml-1">pts</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Return Home Button -->
+          <button
+            @click="router.push('/')"
+            class="w-full py-4 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-bold text-lg rounded-xl transition-all shadow-lg shadow-violet-500/30"
+          >
+            Return to Home
+          </button>
+        </div>
       </div>
     </div>
   </div>

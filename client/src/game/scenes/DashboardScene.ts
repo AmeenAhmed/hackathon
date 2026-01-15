@@ -252,7 +252,6 @@ export default class DashboardScene extends Phaser.Scene {
   }
 
   public updateGameState(gameState: GameState): void {
-    console.log('DashboardScene updateGameState:', gameState);
     if (!gameState || !gameState.players) return;
 
     // If game is already playing and music hasn't started, start it

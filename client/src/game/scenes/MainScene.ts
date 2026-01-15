@@ -70,6 +70,8 @@ export default class MainScene extends Phaser.Scene {
   };
   private uziBurstCount: number = 0;
   private isMouseDown: boolean = false;
+  private isSpaceDown: boolean = false;
+  private spaceKey!: Phaser.Input.Keyboard.Key;
   private bulletCheckCounter: number = 0;
   private activeBullets: Map<string, any> = new Map(); // Track our bullets by ID
   private bulletIdCounter: number = 0;
@@ -191,6 +193,16 @@ export default class MainScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-ONE', () => this.switchGun(0));
     this.input.keyboard!.on('keydown-TWO', () => this.switchGun(1));
     this.input.keyboard!.on('keydown-THREE', () => this.switchGun(2));
+
+    // Add space key for firing
+    this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.spaceKey.on('down', () => {
+      this.isSpaceDown = true;
+    });
+    this.spaceKey.on('up', () => {
+      this.isSpaceDown = false;
+      this.uziBurstCount = 0; // Reset burst count when releasing space
+    });
 
     // Start the UI scene in parallel
     this.scene.launch('UIScene');
@@ -399,8 +411,9 @@ export default class MainScene extends Phaser.Scene {
       this.localPlayer.setTint(parseInt(playerStore.color.replace('#', '0x')));
     }
 
-    // Add player name text - use actual player name from store
-    const playerName = playerStore?.name || 'You';
+    // Add player name text - use actual player name from store with (You) indicator
+    const baseName = playerStore?.name || 'Player';
+    const playerName = `${baseName} (You)`;
 
     const nameText = this.add.text(0, -20, playerName, {
       fontSize: '10px',
@@ -531,8 +544,13 @@ export default class MainScene extends Phaser.Scene {
     // Update player count display
     const playerCount = Object.keys(gameState.players).length;
     const uiScene = this.scene.get('UIScene') as any;
-    if (uiScene && uiScene.playerCountText) {
-      uiScene.playerCountText.setText(`Players: ${playerCount}`);
+    if (uiScene && uiScene.updatePlayerCount) {
+      uiScene.updatePlayerCount(playerCount);
+    }
+
+    // Update timer if provided
+    if (gameState.timer !== undefined) {
+      this.updateTimerUI(gameState.timer);
     }
 
     // Update other players
@@ -540,6 +558,15 @@ export default class MainScene extends Phaser.Scene {
       if (playerId !== this.playerId) {
         // console.log(`Processing player ${playerId}:`, playerData);
         this.updateOtherPlayer(playerId, playerData as Player);
+      } else {
+        // Update local player's name if it changed (server has the actual name)
+        const serverPlayerData = playerData as Player;
+        if (serverPlayerData.name && this.localPlayer && this.localPlayer.nameText) {
+          const newName = `${serverPlayerData.name} (You)`;
+          if (this.localPlayer.nameText.text !== newName) {
+            this.localPlayer.nameText.setText(newName);
+          }
+        }
       }
     }
 
@@ -555,6 +582,11 @@ export default class MainScene extends Phaser.Scene {
   }
 
   updateOtherPlayer(playerId: string, playerData: Player): void {
+    // Extra safeguard: skip if this is the local player
+    if (playerId === this.playerId || (this.localPlayer && this.localPlayer.playerId === playerId)) {
+      return;
+    }
+
     let sprite = this.otherPlayers.get(playerId);
 
     if (!sprite) {
@@ -801,8 +833,8 @@ export default class MainScene extends Phaser.Scene {
       }
     }
 
-    // Handle firing (only if game has started)
-    if (this.isMouseDown && this.gameStarted) {
+    // Handle firing (only if game has started) - mouse click or space key
+    if ((this.isMouseDown || this.isSpaceDown) && this.gameStarted) {
       this.handleFiring(time);
     }
 
@@ -1057,8 +1089,8 @@ export default class MainScene extends Phaser.Scene {
     // Update gun text and ammo
     const gunNames = ['Pistol', 'Shotgun', 'Uzi'];
     const uiScene = this.scene.get('UIScene') as any;
-    if (uiScene && uiScene.gunText) {
-      uiScene.gunText.setText(`Gun: ${gunNames[gunIndex]}`);
+    if (uiScene && uiScene.updateGun) {
+      uiScene.updateGun(gunNames[gunIndex]);
     }
     this.updateAmmoUI();
   }
@@ -1257,6 +1289,9 @@ export default class MainScene extends Phaser.Scene {
     // Update kill counts
     this.totalKills++;
 
+    // Update score UI
+    this.updateScoreUI();
+
     // Send kill update to server for score calculation
     this.sendKillUpdate();
 
@@ -1343,6 +1378,10 @@ export default class MainScene extends Phaser.Scene {
   // Send correct answers count to server for score calculation
   sendCorrectAnswers(count: number): void {
     this.correctAnswers += count;
+
+    // Update score UI
+    this.updateScoreUI();
+
     if (this.ws && this.ws.send) {
       this.ws.send('updateScore', {
         correctAnswers: this.correctAnswers,
@@ -1384,22 +1423,26 @@ export default class MainScene extends Phaser.Scene {
     }
   }
 
+  updateScoreUI(): void {
+    const uiScene = this.scene.get('UIScene') as any;
+    if (uiScene && uiScene.updateScore) {
+      uiScene.updateScore(this.totalKills, this.correctAnswers);
+    }
+  }
+
   updateAmmoUI(): void {
     const uiScene = this.scene.get('UIScene') as any;
-    if (uiScene && uiScene.ammoText) {
+    if (uiScene && uiScene.updateAmmo) {
       const ammoCount = this.ammo[this.currentGun];
       const maxAmmo = this.maxAmmo[this.currentGun];
-      const text = ammoCount > 0 ? `Ammo: ${ammoCount}/${maxAmmo}` : 'Ammo: EMPTY';
-      uiScene.ammoText.setText(text);
+      uiScene.updateAmmo(ammoCount, maxAmmo);
+    }
+  }
 
-      // Change color based on ammo status
-      if (ammoCount === 0) {
-        uiScene.ammoText.setColor('#ff0000'); // Red for empty
-      } else if (ammoCount <= maxAmmo / 4) {
-        uiScene.ammoText.setColor('#ffaa00'); // Orange for low
-      } else {
-        uiScene.ammoText.setColor('#ff9900'); // Normal orange
-      }
+  updateTimerUI(seconds: number): void {
+    const uiScene = this.scene.get('UIScene') as any;
+    if (uiScene && uiScene.updateTimer) {
+      uiScene.updateTimer(seconds);
     }
   }
 

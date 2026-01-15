@@ -711,6 +711,19 @@ func (c *Client) handleMessage(msg Message) {
 			return
 		}
 		c.handleUpdateScore(data.CorrectAnswers, data.Kills)
+
+	case "endGame":
+		c.handleEndGame()
+
+	case "updateTimer":
+		var data struct {
+			Timer int `json:"timer"`
+		}
+		if err := json.Unmarshal(msg.Content, &data); err != nil {
+			log.Printf("Error parsing updateTimer message: %v", err)
+			return
+		}
+		c.handleUpdateTimer(data.Timer)
 	}
 }
 
@@ -1167,6 +1180,58 @@ func (c *Client) handleUpdateScore(correctAnswers int, kills int) {
 		log.Printf("Player %s score updated: correctAnswers=%d, kills=%d, score=%d",
 			c.ID, correctAnswers, kills, score)
 	}
+}
+
+func (c *Client) handleEndGame() {
+	// Only dashboard can end the game
+	if !c.IsDashboard {
+		log.Printf("Non-dashboard client tried to end game")
+		return
+	}
+
+	room, exists := roomManager.GetRoom(c.RoomCode)
+	if !exists {
+		log.Printf("Room not found for end game: %s", c.RoomCode)
+		return
+	}
+
+	// Update game phase to ended
+	room.mutex.Lock()
+	room.GameState.GamePhase = "ended"
+	room.mutex.Unlock()
+
+	// Broadcast game ended to all clients
+	response := struct {
+		Type      string         `json:"type"`
+		GamePhase string         `json:"gamePhase"`
+		Scores    map[string]int `json:"scores"`
+	}{
+		Type:      "gameEnded",
+		GamePhase: "ended",
+		Scores:    room.GameState.Score,
+	}
+
+	data, _ := json.Marshal(response)
+	room.broadcastToAll(data)
+
+	log.Printf("Game ended in room %s", c.RoomCode)
+}
+
+func (c *Client) handleUpdateTimer(timer int) {
+	// Only dashboard can update timer
+	if !c.IsDashboard {
+		return
+	}
+
+	room, exists := roomManager.GetRoom(c.RoomCode)
+	if !exists {
+		return
+	}
+
+	// Update timer in game state
+	room.mutex.Lock()
+	room.GameState.Timer = timer
+	room.mutex.Unlock()
 }
 
 func main() {

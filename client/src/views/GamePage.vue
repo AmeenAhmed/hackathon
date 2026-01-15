@@ -14,6 +14,7 @@ const gameManager = ref<GameManager | null>(null);
 const isLoading = ref(true);
 const error = ref<string | null>(null);
 const quizRef = ref<any>(null);
+const isGameEnded = ref(false);
 
 const goHome = () => {
   if (router) {
@@ -132,6 +133,14 @@ onMounted(async () => {
         gameManager.value.handleGameUpdate({ gamePhase: 'playing' });
       }
     });
+
+    ws.on('gameEnded', (data: any) => {
+      // console.log('GamePage received gameEnded event');
+      isGameEnded.value = true;
+      if (gameManager.value) {
+        gameManager.value.handleGameUpdate({ gamePhase: 'ended' });
+      }
+    });
   } catch (err) {
     // console.error('Game initialization error:', err);
     if (err instanceof Error) {
@@ -188,6 +197,20 @@ onUnmounted(() => {
 
     <!-- Unified Quiz Overlay -->
     <Quiz ref="quizRef" />
+
+    <!-- Game Ended Overlay -->
+    <div v-if="isGameEnded" class="game-ended-overlay">
+      <div class="game-ended-modal">
+        <div class="trophy-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h2>Game Over!</h2>
+        <p>Time's up! Check the dashboard for final results.</p>
+        <button @click="goHome" class="home-button">Return to Home</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -247,5 +270,78 @@ onUnmounted(() => {
 
 .error button:hover {
   background-color: #2980b9;
+}
+
+/* Game Ended Overlay */
+.game-ended-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(8px);
+}
+
+.game-ended-modal {
+  background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
+  border: 2px solid #fbbf24;
+  border-radius: 20px;
+  padding: 40px;
+  text-align: center;
+  max-width: 400px;
+  box-shadow: 0 0 40px rgba(251, 191, 36, 0.3);
+}
+
+.trophy-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 20px;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trophy-icon svg {
+  width: 40px;
+  height: 40px;
+  color: #1e1e2e;
+}
+
+.game-ended-modal h2 {
+  font-size: 32px;
+  color: #fbbf24;
+  margin-bottom: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.game-ended-modal p {
+  color: #a1a1aa;
+  font-size: 16px;
+  margin-bottom: 24px;
+}
+
+.home-button {
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+  color: white;
+  border: none;
+  padding: 14px 32px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.home-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.4);
 }
 </style>
