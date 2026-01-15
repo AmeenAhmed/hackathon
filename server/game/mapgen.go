@@ -44,7 +44,7 @@ const (
 	MinActiveWalker = 3  // Don't despawn below this count
 
 	// Object placement
-	CoverDensity      = 5   // % of floor tiles that get cover objects
+	CoverDensity      = 2   // % of floor tiles that get cover objects
 	MinCoverSpacing   = 4   // Minimum tiles between cover objects
 	ChestCount        = 5   // Rare chests - only in enclosures
 	LootCount         = 15  // Number of ammo/health pickups
