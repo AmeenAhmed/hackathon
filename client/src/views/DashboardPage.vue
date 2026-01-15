@@ -1,21 +1,33 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useGameStore } from '../stores/gameStore';
+import { useWS } from '../composables/useWS';
+import DashboardManager from '../game/DashboardManager';
+import type { Player } from '../types';
 
-// Global timer state
-const globalTimer = ref(300); // 5 minutes in seconds
-let timerInterval: ReturnType<typeof setInterval> | null = null;
+const gameStore = useGameStore();
+const ws = useWS();
+const dashboardManager = new DashboardManager();
 
-// Leaderboard data (placeholder)
-const leaderboard = ref([
-  { rank: 1, name: 'PlayerOne', score: 2450, color: '#FFD700' },
-  { rank: 2, name: 'ShadowNinja', score: 2180, color: '#C0C0C0' },
-  { rank: 3, name: 'DragonSlayer', score: 1950, color: '#CD7F32' },
-  { rank: 4, name: 'CosmicKnight', score: 1720, color: '' },
-  { rank: 5, name: 'StormBringer', score: 1580, color: '' },
-  { rank: 6, name: 'PhantomX', score: 1340, color: '' },
-  { rank: 7, name: 'NightHawk', score: 1120, color: '' },
-  { rank: 8, name: 'CyberWolf', score: 980, color: '' },
-]);
+// Computed leaderboard from game state
+const leaderboard = computed(() => {
+  const players = Object.values(gameStore.players) as Player[];
+  const scores = gameStore.score;
+  
+  return players
+    .map((player, index) => ({
+      rank: index + 1,
+      id: player.id,
+      name: player.name,
+      score: scores[player.id] || 0,
+      color: player.color
+    }))
+    .sort((a, b) => b.score - a.score)
+    .map((player, index) => ({ ...player, rank: index + 1 }));
+});
+
+// Timer from game state
+const globalTimer = computed(() => gameStore.timer);
 
 // Format timer as MM:SS
 function formatTime(seconds: number): string {
@@ -24,20 +36,48 @@ function formatTime(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
-// Start the countdown timer
+// Initialize dashboard
 onMounted(() => {
-  timerInterval = setInterval(() => {
-    if (globalTimer.value > 0) {
-      globalTimer.value--;
+  // Initialize WebSocket connection first
+  ws.init();
+
+  // Setup WebSocket listener for game updates
+  ws.on('gameUpdate', (data: any) => {
+    console.log('Dashboard received gameUpdate:', data);
+    if (data.gameState) {
+      gameStore.setGameState(data.gameState);
+      dashboardManager.handleGameUpdate(data.gameState);
+    } else if (data) {
+      // Handle case where gameState is at root level
+      gameStore.setGameState(data);
+      dashboardManager.handleGameUpdate(data);
     }
-  }, 1000);
+  });
+
+  ws.on('initialState', (data: any) => {
+    console.log('Dashboard received initialState:', data);
+    if (data.gameState) {
+      gameStore.setGameState(data.gameState);
+      dashboardManager.handleGameUpdate(data.gameState);
+    } else if (data) {
+      gameStore.setGameState(data);
+      dashboardManager.handleGameUpdate(data);
+    }
+  });
+
+  // Initialize the Phaser game for spectator view
+  dashboardManager.init(ws);
 });
 
 onUnmounted(() => {
-  if (timerInterval) {
-    clearInterval(timerInterval);
-  }
+  dashboardManager.destroy();
+  ws.close();
 });
+
+// Focus on a specific player when clicking leaderboard
+function focusOnPlayer(playerId: string) {
+  dashboardManager.focusOnPlayer(playerId);
+}
 </script>
 
 <template>
@@ -80,19 +120,8 @@ onUnmounted(() => {
 
     <!-- Main Content Area -->
     <div class="flex-1 relative">
-      <!-- Game Scene Placeholder -->
-      <div class="absolute inset-0 flex items-center justify-center bg-slate-900">
-        <div class="text-center">
-          <div class="w-32 h-32 mx-auto mb-6 bg-slate-800 rounded-2xl border-2 border-dashed border-slate-600 flex items-center justify-center">
-            <svg class="w-16 h-16 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h2 class="text-2xl font-bold text-slate-400 mb-2">Game Scene</h2>
-          <p class="text-slate-500">The battle arena will render here</p>
-        </div>
-      </div>
+      <!-- Phaser Game Container -->
+      <div id="dashboard-container" class="absolute inset-0 bg-slate-900"></div>
 
       <!-- Floating Leaderboard -->
       <div class="absolute top-4 right-4 w-72 bg-slate-800/95 backdrop-blur-sm rounded-xl border border-slate-700 shadow-2xl shadow-black/50 overflow-hidden">
@@ -108,8 +137,9 @@ onUnmounted(() => {
         <div class="divide-y divide-slate-700/50">
           <div
             v-for="player in leaderboard"
-            :key="player.rank"
-            class="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-700/30 transition-colors"
+            :key="player.id"
+            class="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-700/30 transition-colors cursor-pointer"
+            @click="focusOnPlayer(player.id)"
           >
             <!-- Rank -->
             <div
@@ -124,6 +154,12 @@ onUnmounted(() => {
               {{ player.rank }}
             </div>
 
+            <!-- Player Color Indicator -->
+            <div
+              class="w-3 h-3 rounded-full shrink-0"
+              :style="{ backgroundColor: player.color }"
+            ></div>
+
             <!-- Player Name -->
             <div class="flex-1 min-w-0">
               <div class="text-white font-medium text-sm truncate">{{ player.name }}</div>
@@ -133,6 +169,11 @@ onUnmounted(() => {
             <div class="text-right shrink-0">
               <span class="text-emerald-400 font-semibold text-sm tabular-nums">{{ player.score.toLocaleString() }}</span>
             </div>
+          </div>
+
+          <!-- Empty state -->
+          <div v-if="leaderboard.length === 0" class="px-4 py-6 text-center text-slate-500 text-sm">
+            Waiting for players to join...
           </div>
         </div>
 
