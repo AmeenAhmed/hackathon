@@ -1,26 +1,35 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useWS } from '../composables/useWS';
+import { useRouter } from 'vue-router';
+
 const { init, send, on } = useWS();
+const router = useRouter();
+
 
 const code = ref('');
+const name = ref('');
 
 const isValidCode = computed(() => {
-  return !!code && code.value.length === 6;
+  return !!code.value && !!name.value && code.value.length === 6;
 });
 
 function createRoom() {
-  on('roomCreated', ({ roomCode}) => {
-    window.location.href = `/dashboard/${roomCode}`
+  on('roomCreated', (message: any) => {
+    router.push(`/dashboard/${message.roomCode}`);
   });
-  send('createRoom')
+  send('createRoom');
+}
+
+function joinRoom() {
+  on('joinedRoom', (message: any) => {
+    router.push(`/game/${message.roomCode}`)
+  })
+  send('joinRoom', { code: code.value, name: name.value })
 }
 
 onMounted(() => {
   init();
-  setTimeout(()=> {
-    send('ping');
-  }, 1000);
 });
 </script>
 
@@ -32,8 +41,15 @@ onMounted(() => {
       class="border-2 border-slate-500 py-3 px-6 font-bold rounded-xl outline-none text-center focus:border-pink-500 w-full"
       v-model="code"
       name="code" 
-      id="code" 
+      id="code"
       placeholder="Please enter your join code" 
+      />
+      <input 
+        class="border-2 border-slate-500 py-3 px-6 font-bold rounded-xl outline-none text-center focus:border-pink-500 w-full"
+        v-model="name"
+        name="name" 
+        id="name"
+        placeholder="Please enter your name" 
       />
       <button 
         class="px-8 py-3 bg-pink-500 rounded-lg font-bold cursor-pointer w-full"
@@ -41,6 +57,7 @@ onMounted(() => {
           'opacity-100': isValidCode,
           'opacity-50 pointer-events-none': !isValidCode
         }"
+        @click="joinRoom"
       >
         JOIN GAME
       </button>
