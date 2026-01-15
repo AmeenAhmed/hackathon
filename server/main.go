@@ -27,6 +27,7 @@ type Player struct {
 	X           float64 `json:"x"`
 	Y           float64 `json:"y"`
 	Animation   string  `json:"animation"`
+	Direction   string  `json:"direction"`
 	IsProtected bool    `json:"isProtected"`
 }
 
@@ -231,10 +232,10 @@ func (r *Room) broadcastGameState() {
 	defer r.mutex.RUnlock()
 
 	state := struct {
-		Type      string        `json:"type"`
-		GameState GameState     `json:"gameState"`
-		MapData   game.MapData  `json:"mapData"`
-		Timestamp int64         `json:"timestamp"`
+		Type      string       `json:"type"`
+		GameState GameState    `json:"gameState"`
+		MapData   game.MapData `json:"mapData"`
+		Timestamp int64        `json:"timestamp"`
 	}{
 		Type:      "gameUpdate",
 		GameState: r.GameState,
@@ -253,11 +254,11 @@ func (r *Room) broadcastGameState() {
 
 func (r *Room) sendGameStateToClient(client *Client) {
 	state := struct {
-		Type      string        `json:"type"`
-		RoomCode  string        `json:"roomCode"`
-		GameState GameState     `json:"gameState"`
-		MapData   game.MapData  `json:"mapData"`
-		Timestamp int64         `json:"timestamp"`
+		Type      string       `json:"type"`
+		RoomCode  string       `json:"roomCode"`
+		GameState GameState    `json:"gameState"`
+		MapData   game.MapData `json:"mapData"`
+		Timestamp int64        `json:"timestamp"`
 	}{
 		Type:      "initialState",
 		RoomCode:  r.Code,
@@ -302,7 +303,7 @@ func (r *Room) broadcastToClients(message []byte) {
 	}
 }
 
-func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation string) {
+func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation string, direction string) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -310,6 +311,7 @@ func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation str
 		player.X = x
 		player.Y = y
 		player.Animation = animation
+		player.Direction = direction
 		r.LastUpdate = time.Now()
 	}
 }
@@ -434,12 +436,13 @@ func (c *Client) handleMessage(msg Message) {
 			X         float64 `json:"x"`
 			Y         float64 `json:"y"`
 			Animation string  `json:"animation"`
+			Direction string  `json:"direction"`
 		}
 		if err := json.Unmarshal(msg.Content, &data); err != nil {
 			log.Printf("Error parsing updatePosition message: %v", err)
 			return
 		}
-		c.handleUpdatePosition(data.X, data.Y, data.Animation)
+		c.handleUpdatePosition(data.X, data.Y, data.Animation, data.Direction)
 
 	case "updateGamePhase":
 		var data struct {
@@ -450,6 +453,17 @@ func (c *Client) handleMessage(msg Message) {
 			return
 		}
 		c.handleUpdateGamePhase(data.Phase)
+
+	case "rejoinRoom":
+		var data struct {
+			Code     string `json:"code"`
+			PlayerID string `json:"playerId"`
+		}
+		if err := json.Unmarshal(msg.Content, &data); err != nil {
+			log.Printf("Error parsing rejoinRoom message: %v", err)
+			return
+		}
+		c.handleRejoinRoom(data.Code, data.PlayerID)
 	}
 }
 
@@ -487,14 +501,15 @@ func (c *Client) handleJoinRoom(code string, playerName string) {
 		return
 	}
 
-	// Create player
+	// Create player at center with some randomness
 	c.Player = &Player{
 		ID:        c.ID,
 		Name:      playerName,
 		Color:     playerColors[rand.Intn(len(playerColors))],
-		X:         float64(rand.Intn(room.MapData.Width)),
-		Y:         float64(rand.Intn(room.MapData.Height)),
+		X:         float64(room.MapData.Width/2 + rand.Intn(200) - 100),
+		Y:         float64(room.MapData.Height/2 + rand.Intn(200) - 100),
 		Animation: "idle",
+		Direction: "right",
 	}
 
 	c.RoomCode = code
@@ -515,7 +530,80 @@ func (c *Client) handleJoinRoom(code string, playerName string) {
 	c.Send <- data
 }
 
-func (c *Client) handleUpdatePosition(x, y float64, animation string) {
+func (c *Client) handleRejoinRoom(code string, playerID string) {
+	room, exists := roomManager.GetRoom(code)
+	if !exists {
+		response := struct {
+			Type  string `json:"type"`
+			Error string `json:"error"`
+		}{
+			Type:  "error",
+			Error: "Room not found",
+		}
+		data, _ := json.Marshal(response)
+		c.Send <- data
+		return
+	}
+
+	// Check if player exists in the room's game state
+	room.mutex.RLock()
+	existingPlayer, playerExists := room.GameState.Players[playerID]
+	room.mutex.RUnlock()
+
+	if playerExists {
+		// Reuse existing player data but update the client ID
+		c.ID = playerID
+		c.Player = &Player{
+			ID:          existingPlayer.ID,
+			Name:        existingPlayer.Name,
+			Color:       existingPlayer.Color,
+			X:           existingPlayer.X,
+			Y:           existingPlayer.Y,
+			Animation:   existingPlayer.Animation,
+			Direction:   existingPlayer.Direction,
+			IsProtected: existingPlayer.IsProtected,
+		}
+		// Set default direction if empty
+		if c.Player.Direction == "" {
+			c.Player.Direction = "right"
+		}
+		log.Printf("Player %s rejoining room %s with existing data", playerID, code)
+	} else {
+		// Player wasn't in the room before, create new player data at center
+		c.ID = playerID
+		c.Player = &Player{
+			ID:        playerID,
+			Name:      "Player",
+			Color:     playerColors[rand.Intn(len(playerColors))],
+			X:         float64(room.MapData.Width/2 + rand.Intn(200) - 100),
+			Y:         float64(room.MapData.Height/2 + rand.Intn(200) - 100),
+			Animation: "idle",
+			Direction: "right",
+		}
+		log.Printf("Player %s joining room %s as new player", playerID, code)
+	}
+
+	c.RoomCode = code
+	room.register <- c
+
+	// Send success response with player data
+	response := struct {
+		Type     string  `json:"type"`
+		PlayerID string  `json:"playerId"`
+		Player   *Player `json:"player"`
+		Rejoined bool    `json:"rejoined"`
+	}{
+		Type:     "rejoinedRoom",
+		PlayerID: c.ID,
+		Player:   c.Player,
+		Rejoined: playerExists,
+	}
+
+	data, _ := json.Marshal(response)
+	c.Send <- data
+}
+
+func (c *Client) handleUpdatePosition(x, y float64, animation string, direction string) {
 	if c.RoomCode == "" || c.Player == nil {
 		return
 	}
@@ -525,7 +613,7 @@ func (c *Client) handleUpdatePosition(x, y float64, animation string) {
 		return
 	}
 
-	room.updatePlayerPosition(c.ID, x, y, animation)
+	room.updatePlayerPosition(c.ID, x, y, animation, direction)
 }
 
 func (c *Client) handleUpdateGamePhase(phase string) {

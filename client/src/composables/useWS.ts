@@ -1,10 +1,7 @@
 import Sockette from "sockette";
 
 let ws: Sockette | null = null;
-const subscriptions: Record<string, Array<Function>> = {
-  'roomCreated': [],
-  'joinedRoom': [],
-};
+const subscriptions: Record<string, Array<Function>> = {};
 
 export function useWS() {
  
@@ -14,10 +11,10 @@ export function useWS() {
       maxAttempts: 10,
       onopen: e => console.log('Connected!', e),
       onmessage: e => {
-        console.log('Received:', e);
+        // console.log('Received:', e);
         if(e.data) {
           const message = JSON.parse(e.data);
-          if(subscriptions && subscriptions[message.type] && subscriptions[message.type]?.length) {
+          if(subscriptions[message.type] && subscriptions[message.type].length > 0) {
             for(let cb of subscriptions[message.type]) {
               cb(message);
             }
@@ -38,6 +35,9 @@ export function useWS() {
   }
 
   function on(eventName: string, callback: Function) {
+    if (!subscriptions[eventName]) {
+      subscriptions[eventName] = [];
+    }
     subscriptions[eventName].push(callback);
   }
 

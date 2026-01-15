@@ -5,5 +5,5 @@ import GamePage from "./views/GamePage.vue";
 export default [
    { path: '/', component: HomePage },
    { path: '/dashboard/:code', component: DashboardPage },
-   { path: '/game/:code', component: GamePage }
+   { path: '/game/:code/:playerId', component: GamePage }
 ];

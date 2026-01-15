@@ -2,9 +2,11 @@
 import { computed, onMounted, ref } from 'vue';
 import { useWS } from '../composables/useWS';
 import { useRouter } from 'vue-router';
+import { usePlayerStore } from '../stores/playerStore';
 
 const { init, send, on } = useWS();
 const router = useRouter();
+const playerStore = usePlayerStore();
 
 
 const code = ref('');
@@ -23,7 +25,8 @@ function createRoom() {
 
 function joinRoom() {
   on('joinedRoom', (message: any) => {
-    router.push(`/game/${message.roomCode}`)
+    playerStore.setPlayerData(message.player);
+    router.push(`/game/${code.value}/${message.playerId}`)
   })
   send('joinRoom', { code: code.value, name: name.value })
 }
