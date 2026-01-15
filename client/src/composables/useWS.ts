@@ -3,6 +3,7 @@ import Sockette from "sockette";
 let ws: Sockette | null = null;
 const subscriptions: Record<string, Array<Function>> = {
   'roomCreated': [],
+  'joinedRoom': [],
 };
 
 export function useWS() {
@@ -30,9 +31,9 @@ export function useWS() {
     });
   }
 
-  function send(type: string, data?: any) {
+  function send(type: string, content?: any) {
     if(ws) {
-      ws.json({ type, data });
+      ws.json({ type, content });
     }
   }
 
