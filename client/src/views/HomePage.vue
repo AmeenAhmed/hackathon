@@ -10,9 +10,8 @@ const isValidCode = computed(() => {
 });
 
 function createRoom() {
-  on('roomCreated', () => {
-    debugger
-    window.location.href = '/dashboard/'
+  on('roomCreated', ({ roomCode}) => {
+    window.location.href = `/dashboard/${roomCode}`
   });
   send('createRoom')
 }

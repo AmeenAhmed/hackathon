@@ -18,7 +18,7 @@ export function useWS() {
           const message = JSON.parse(e.data);
           if(subscriptions && subscriptions[message.type] && subscriptions[message.type]?.length) {
             for(let cb of subscriptions[message.type]) {
-              cb();
+              cb(message);
             }
           }
         }
