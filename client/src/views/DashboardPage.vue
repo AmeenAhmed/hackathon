@@ -14,6 +14,7 @@ const dashboardManager = new DashboardManager();
 const gamePhase = ref('waiting');
 const isStarting = ref(false);
 const errorMessage = ref<string | null>(null);
+const showInstructions = ref(true);
 
 // Global game timer (5 minutes = 300 seconds)
 const GAME_DURATION = 300;
@@ -74,16 +75,13 @@ function startGameTimer() {
   }
   
   gameTimer.value = GAME_DURATION;
-  // Send initial timer to server
   ws.send('updateTimer', { timer: gameTimer.value });
   
   timerInterval = setInterval(() => {
     if (gameTimer.value > 0) {
       gameTimer.value--;
-      // Send timer update to server so players can see it
       ws.send('updateTimer', { timer: gameTimer.value });
     } else {
-      // Timer reached 0, end the game
       endGame();
     }
   }, 1000);
@@ -108,16 +106,13 @@ function endGame() {
 onMounted(async () => {
   const code = route.params.code as string;
 
-  // Validate room code
   if (!code) {
     console.error('No room code provided');
     return;
   }
 
-  // Initialize WebSocket connection first
   ws.init();
 
-  // Setup WebSocket listeners before sending rejoin
   ws.on('rejoinedDashboard', (data: any) => {
     console.log('Dashboard rejoined successfully:', data);
     if (data.gameState) {
@@ -125,13 +120,11 @@ onMounted(async () => {
       dashboardManager.handleGameUpdate(data.gameState);
       if (data.gameState.gamePhase) {
         gamePhase.value = data.gameState.gamePhase;
-        // If rejoining during an active game, start the timer
         if (data.gameState.gamePhase === 'playing' && !timerInterval) {
           startGameTimer();
         }
       }
     }
-    // Store terrain data for dashboard to use
     if (data.mapData) {
       sessionStorage.setItem('mapData', JSON.stringify(data.mapData));
     }
@@ -146,7 +139,6 @@ onMounted(async () => {
         gamePhase.value = data.gameState.gamePhase;
       }
     } else if (data) {
-      // Handle case where gameState is at root level
       gameStore.setGameState(data);
       dashboardManager.handleGameUpdate(data);
       if (data.gamePhase) {
@@ -175,7 +167,6 @@ onMounted(async () => {
   ws.on('gameStarted', (data: any) => {
     console.log('Game started:', data);
     gamePhase.value = 'playing';
-    // Start the 5-minute game timer
     startGameTimer();
   });
 
@@ -185,38 +176,30 @@ onMounted(async () => {
     stopGameTimer();
   });
 
-  // Listen for bullet events and forward to dashboard
   ws.on('bulletSpawn', (data: any) => {
-    console.log('Dashboard received bulletSpawn:', data);
     dashboardManager.handleBulletSpawn(data);
   });
 
   ws.on('bulletDestroy', (data: any) => {
-    console.log('Dashboard received bulletDestroy:', data);
     dashboardManager.handleBulletDestroy(data);
   });
 
   ws.on('playerHit', (data: any) => {
-    console.log('Dashboard received playerHit:', data);
     dashboardManager.handlePlayerHit(data);
   });
 
   ws.on('playerDeath', (data: any) => {
-    console.log('Dashboard received playerDeath:', data);
     dashboardManager.handlePlayerDeath(data);
   });
 
   ws.on('playerRespawn', (data: any) => {
-    console.log('Dashboard received playerRespawn:', data);
     dashboardManager.handlePlayerRespawn(data);
   });
 
-  // Handle errors from the server
   ws.on('error', (data: any) => {
     console.error('Dashboard received error:', data);
     if (data.error === 'Room not found') {
       errorMessage.value = 'Room not found. The room may have been closed or the code is invalid.';
-      // Redirect to home after showing error
       setTimeout(() => {
         router.push('/');
       }, 3000);
@@ -225,13 +208,11 @@ onMounted(async () => {
     }
   });
 
-  // Send rejoin request for dashboard
   setTimeout(() => {
     console.log('Sending dashboard rejoin request:', { code });
     ws.send('rejoinDashboard', { code });
   }, 200);
 
-  // Initialize the Phaser game for spectator view
   dashboardManager.init(ws);
 });
 
@@ -241,22 +222,17 @@ onUnmounted(() => {
   ws.close();
 });
 
-// Focus on a specific player when clicking leaderboard
 function focusOnPlayer(playerId: string) {
   dashboardManager.focusOnPlayer(playerId);
 }
 
-// Start the game with countdown
 function startGame() {
-  if (isStarting.value) return; // Prevent multiple clicks
-
+  if (isStarting.value) return;
   isStarting.value = true;
 
-  // Play countdown on dashboard, then start the actual game
   dashboardManager.playCountdownAndStart(() => {
     ws.send('startGame', {});
     isStarting.value = false;
-    // Start the 5-minute game timer immediately
     gamePhase.value = 'playing';
     startGameTimer();
   });
@@ -264,72 +240,69 @@ function startGame() {
 </script>
 
 <template>
-  <div class="modern-dashboard w-screen h-screen bg-slate-950 flex flex-col overflow-hidden">
+  <div class="dashboard w-screen h-screen flex flex-col overflow-hidden">
+    <!-- Dark Background -->
+    <div class="fixed inset-0 bg-base -z-10"></div>
+    
+    <!-- Subtle Glow Effects -->
+    <div class="fixed inset-0 pointer-events-none overflow-hidden -z-10">
+      <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-teal/8 rounded-full blur-3xl"></div>
+      <div class="absolute -bottom-40 -left-40 w-[500px] h-[500px] bg-coral/5 rounded-full blur-3xl"></div>
+      <div class="absolute -bottom-40 -right-40 w-[500px] h-[500px] bg-gold/5 rounded-full blur-3xl"></div>
+    </div>
+
     <!-- Error Modal -->
-    <div v-if="errorMessage" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div class="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md mx-4 shadow-2xl shadow-red-500/20">
+    <div v-if="errorMessage" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div class="card-modal rounded-2xl p-8 max-w-md mx-4">
         <div class="flex items-center gap-4 mb-4">
-          <div class="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
-            <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h2 class="text-xl font-bold text-white">Error</h2>
+          <h2 class="text-xl font-bold text-dark">Error</h2>
         </div>
-        <p class="text-slate-300 mb-6">{{ errorMessage }}</p>
+        <p class="text-dark/70 mb-6">{{ errorMessage }}</p>
         <div class="flex items-center justify-between">
-          <span class="text-slate-500 text-sm">Redirecting to home...</span>
-          <button 
-            @click="router.push('/')" 
-            class="px-4 py-2 bg-red-500 hover:bg-red-400 text-white font-semibold rounded-lg transition-colors"
-          >
+          <span class="text-dark/40 text-sm">Redirecting to home...</span>
+          <button @click="router.push('/')" class="btn-danger px-4 py-2 font-semibold rounded-lg">
             Go Home Now
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Ambient background glow -->
-    <div class="fixed inset-0 pointer-events-none overflow-hidden">
-      <div class="absolute -top-40 -left-40 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl"></div>
-      <div class="absolute -bottom-40 -right-40 w-96 h-96 bg-cyan-600/20 rounded-full blur-3xl"></div>
-    </div>
-
     <!-- Header Bar -->
-    <header class="h-16 bg-slate-900/80 backdrop-blur-xl border-b border-slate-700/50 flex items-center justify-between px-6 shrink-0 relative z-10">
+    <header class="header-bar h-16 flex items-center justify-between px-6 shrink-0 relative z-10">
       <!-- Logo & Title -->
       <div class="flex items-center gap-4">
-        <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-lg shadow-violet-500/25">
-          <span class="text-white text-2xl font-bold">W</span>
+        <div class="logo-icon w-11 h-11 rounded-xl flex items-center justify-center">
+          <span class="text-dark text-2xl font-bold">W</span>
         </div>
         <div class="flex flex-col">
           <h1 class="text-3xl font-bold tracking-wide uppercase">
-            <span class="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">WAY</span>
-            <span class="bg-gradient-to-r from-fuchsia-400 to-pink-500 bg-clip-text text-transparent">ARENA</span>
+            <span class="text-white">WAY</span>
+            <span class="text-coral">ARENA</span>
           </h1>
           <div class="flex items-center gap-2">
-            <span class="live-indicator flex items-center gap-1.5 text-sm text-emerald-400 font-semibold uppercase">
-              <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+            <span class="live-indicator flex items-center gap-1.5 text-sm text-gold font-semibold uppercase">
+              <span class="w-2 h-2 bg-gold rounded-full animate-pulse"></span>
               Live
             </span>
-            <span class="h-4 w-0.5 bg-slate-500 rounded-full"></span>
-            <span class="text-slate-400 text-sm font-medium">Room: <span class="text-cyan-400 font-semibold">{{ route.params.code }}</span></span>
+            <span class="h-4 w-0.5 bg-teal/40 rounded-full"></span>
+            <span class="text-white/60 text-sm font-medium">Room: <span class="text-gold font-semibold">{{ route.params.code }}</span></span>
           </div>
         </div>
       </div>
 
       <!-- Center: Start Button or Game Status -->
       <div class="flex items-center gap-4">
-        <!-- Start Game Button (shows when game is waiting) -->
         <button
           v-if="gamePhase === 'waiting'"
           @click="startGame"
           :disabled="!canStartGame"
-          :class="{
-            'bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 shadow-lg shadow-emerald-500/30': canStartGame,
-            'bg-gradient-to-r from-slate-600 to-slate-700 cursor-not-allowed opacity-60': !canStartGame
-          }"
-          class="px-8 py-3 rounded-xl text-white font-bold text-lg tracking-wide transition-all flex items-center gap-3"
+          :class="canStartGame ? 'btn-start' : 'btn-start-disabled'"
+          class="px-8 py-3 rounded-xl font-bold text-lg tracking-wide transition-all flex items-center gap-3"
         >
           <svg v-if="!isStarting" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
@@ -341,50 +314,45 @@ function startGame() {
           {{ isStarting ? 'STARTING...' : 'START GAME' }}
         </button>
 
-        <!-- Stats (shows when game is playing) -->
         <div v-if="gamePhase === 'playing'" class="flex items-center gap-8">
           <div class="text-center">
-            <div class="text-slate-400 text-sm font-semibold uppercase tracking-wider">Players</div>
-            <div class="text-4xl font-bold tabular-nums text-cyan-400">{{ leaderboard.length }}</div>
+            <div class="text-white/70 text-sm font-semibold uppercase tracking-wider">Players</div>
+            <div class="text-4xl font-bold tabular-nums text-teal">{{ leaderboard.length }}</div>
           </div>
           <div class="text-center">
-            <div class="text-slate-400 text-sm font-semibold uppercase tracking-wider">Accuracy</div>
+            <div class="text-white/70 text-sm font-semibold uppercase tracking-wider">Accuracy</div>
             <div 
               class="text-4xl font-bold tabular-nums"
               :class="{
-                'text-emerald-400': groupAccuracy >= 70,
-                'text-amber-400': groupAccuracy >= 40 && groupAccuracy < 70,
-                'text-red-400': groupAccuracy < 40
+                'text-gold': groupAccuracy >= 70,
+                'text-orange': groupAccuracy >= 40 && groupAccuracy < 70,
+                'text-coral': groupAccuracy < 40
               }"
             >{{ groupAccuracy }}%</div>
           </div>
         </div>
 
-        <!-- Game Ended Status -->
-        <div v-if="gamePhase === 'ended'" class="bg-red-500/10 backdrop-blur-sm px-5 py-2.5 rounded-xl border border-red-500/30 flex items-center gap-3">
-          <div class="w-3 h-3 bg-red-400 rounded-full"></div>
-          <span class="text-red-400 font-bold text-lg uppercase tracking-wide">Game Ended</span>
+        <div v-if="gamePhase === 'ended'" class="status-ended px-5 py-2.5 rounded-xl flex items-center gap-3">
+          <div class="w-3 h-3 bg-coral rounded-full"></div>
+          <span class="text-coral font-bold text-lg uppercase tracking-wide">Game Ended</span>
         </div>
       </div>
 
       <!-- Global Timer -->
       <div 
-        class="flex items-center gap-3 backdrop-blur-sm px-5 py-2.5 rounded-xl border"
+        class="timer-box flex items-center gap-3 px-5 py-2.5 rounded-xl"
         :class="{
-          'bg-slate-800/60 border-slate-700/50': gameTimer > 60,
-          'bg-red-900/60 border-red-500/50': gameTimer <= 60 && gameTimer > 0,
-          'bg-red-900/80 border-red-500/70': gameTimer === 0
+          'timer-normal': gameTimer > 60,
+          'timer-warning': gameTimer <= 60 && gameTimer > 0,
+          'timer-danger': gameTimer === 0
         }"
       >
-        <svg class="w-5 h-5" :class="gameTimer <= 60 ? 'text-red-400' : 'text-amber-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-5 h-5" :class="gameTimer <= 60 ? 'text-coral' : 'text-gold'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <div 
           class="text-3xl font-bold tabular-nums tracking-wider"
-          :class="{
-            'text-white': gameTimer > 60,
-            'text-red-400 animate-pulse': gameTimer <= 60
-          }"
+          :class="gameTimer <= 60 ? 'text-coral animate-pulse' : 'text-white'"
         >
           {{ formatTime(gameTimer) }}
         </div>
@@ -393,132 +361,164 @@ function startGame() {
 
     <!-- Main Content Area -->
     <div class="flex-1 relative">
-      <!-- Phaser Game Container -->
-      <div id="dashboard-container" class="absolute inset-0 bg-slate-950"></div>
+      <div id="dashboard-container" class="absolute inset-0 bg-base/50"></div>
 
-      <!-- Floating Leaderboard - Projection Optimized -->
+      <!-- Floating Leaderboard -->
       <div class="absolute top-4 right-4 w-72">
-        <div class="bg-black/60 backdrop-blur-sm rounded-lg overflow-hidden">
-          <!-- Leaderboard Header -->
-          <div class="px-4 py-2 border-b border-white/10">
-            <span class="text-white font-bold text-xl tracking-wide uppercase">Leaderboard</span>
+        <div class="leaderboard-card rounded-lg overflow-hidden">
+          <div class="leaderboard-header px-4 py-2">
+            <span class="text-teal-dark font-bold text-xl tracking-wide uppercase">Leaderboard</span>
           </div>
 
-          <!-- Leaderboard List -->
           <div class="max-h-72 overflow-y-auto">
             <div
               v-for="player in leaderboard"
               :key="player.id"
-              class="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-white/5"
+              class="leaderboard-item flex items-center gap-3 px-4 py-2 cursor-pointer"
               @click="focusOnPlayer(player.id)"
             >
-              <!-- Rank Number -->
               <span
                 class="w-6 text-xl font-bold tabular-nums shrink-0"
                 :class="{
-                  'text-amber-400': player.rank === 1,
-                  'text-slate-300': player.rank === 2,
-                  'text-orange-400': player.rank === 3,
-                  'text-slate-500': player.rank > 3
+                  'text-gold-dark': player.rank === 1,
+                  'text-dark/70': player.rank === 2,
+                  'text-orange-dark': player.rank === 3,
+                  'text-dark/40': player.rank > 3
                 }"
               >{{ player.rank }}</span>
 
-              <!-- Player Color Indicator -->
               <div
-                class="w-3 h-3 rounded-full shrink-0"
+                class="w-3 h-3 rounded-full shrink-0 border border-white/20"
                 :style="{ backgroundColor: player.color }"
               ></div>
 
-              <!-- Player Name -->
               <div class="flex-1 min-w-0">
-                <span class="text-white font-semibold text-lg truncate block">{{ player.name }}</span>
+                <span class="text-dark font-semibold text-lg truncate block">{{ player.name }}</span>
               </div>
 
-              <!-- Score -->
-              <span class="text-emerald-400 font-bold text-xl tabular-nums">{{ player.score }}</span>
+              <span class="text-teal-dark font-bold text-xl tabular-nums">{{ player.score }}</span>
             </div>
 
-            <!-- Empty state -->
             <div v-if="leaderboard.length === 0" class="px-4 py-6 text-center">
-              <div class="text-slate-400 font-semibold text-lg">Waiting for players...</div>
+              <div class="text-dark/60 font-semibold text-lg">Waiting for players...</div>
             </div>
           </div>
         </div>
       </div>
 
       <!-- Spectator Badge -->
-      <div class="absolute bottom-4 left-4 bg-slate-900/70 backdrop-blur-xl px-5 py-2.5 rounded-full border border-slate-700/50 flex items-center gap-2">
-        <svg class="w-5 h-5 text-fuchsia-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div class="spectator-badge absolute bottom-4 left-4 px-5 py-2.5 rounded-full flex items-center gap-2">
+        <svg class="w-5 h-5 text-teal-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
         </svg>
-        <span class="text-fuchsia-400 text-sm font-bold tracking-wide uppercase">Spectator Mode</span>
+        <span class="text-teal-dark text-sm font-bold tracking-wide uppercase">Spectator Mode</span>
       </div>
 
+      <!-- Instructions -->
+      <Transition name="instructions-fade">
+        <div 
+          v-if="gamePhase === 'waiting' && showInstructions" 
+          class="absolute top-6 left-1/2 -translate-x-1/2 z-20"
+        >
+          <div class="instructions-card rounded-2xl p-8 max-w-xl">
+            <div class="flex items-center justify-between mb-8">
+              <h2 class="text-3xl font-bold uppercase tracking-wider">
+                <span class="text-teal-dark">How to Play</span>
+              </h2>
+              <button 
+                @click="showInstructions = false"
+                class="close-btn w-9 h-9 rounded-full flex items-center justify-center transition-colors"
+              >
+                <svg class="w-5 h-5 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="space-y-5 text-xl">
+              <p class="text-dark/80">
+                <span class="text-teal-dark font-bold">Movement:</span> 
+                Use <kbd class="key">↑</kbd><kbd class="key">↓</kbd><kbd class="key">←</kbd><kbd class="key">→</kbd> or <kbd class="key">W</kbd><kbd class="key">A</kbd><kbd class="key">S</kbd><kbd class="key">D</kbd> to move.
+              </p>
+              <p class="text-dark/80">
+                <span class="text-coral-dark font-bold">Shooting: </span> 
+                <kbd class="key">Left Click</kbd> or <kbd class="key">Space</kbd> to shoot.
+              </p>
+              <p class="text-dark/80">
+                <span class="text-orange-dark font-bold">Weapons:</span> 
+                Press <kbd class="key">1</kbd><kbd class="key">2</kbd><kbd class="key">3</kbd> to switch weapons.
+              </p>
+              <p class="text-dark/80">
+                <span class="text-gold-dark font-bold">Reload & Respawn:</span> 
+                Answer <span class="text-teal-dark font-bold">questions</span> correctly.
+              </p>
+            </div>
+
+            <p class="text-dark/50 text-base text-center mt-8">Click <span class="text-coral-dark">✕</span> to dismiss</p>
+          </div>
+        </div>
+      </Transition>
+
       <!-- Game Ended Overlay -->
-      <div v-if="gamePhase === 'ended'" class="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
-        <div class="bg-slate-900/90 backdrop-blur-xl rounded-3xl border border-slate-700/50 p-8 max-w-lg w-full mx-4 shadow-2xl">
+      <div v-if="gamePhase === 'ended'" class="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="game-over-card rounded-3xl p-8 max-w-lg w-full mx-4">
           <div class="text-center mb-6">
-            <div class="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
-              <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="trophy-icon w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center">
+              <svg class="w-10 h-10 text-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
               </svg>
             </div>
-            <h2 class="text-4xl font-bold text-white mb-2 uppercase tracking-wider">Game Over!</h2>
-            <p class="text-slate-400 text-lg">Final Standings</p>
+            <h2 class="text-4xl font-bold text-dark mb-2 uppercase tracking-wider">Game Over!</h2>
+            <p class="text-dark/60 text-lg">Final Standings</p>
           </div>
 
-          <!-- Top 3 Players -->
           <div class="space-y-3 mb-6">
             <div
               v-for="(player, index) in leaderboard.slice(0, 3)"
               :key="player.id"
-              class="flex items-center gap-4 p-4 rounded-xl"
+              class="podium-item flex items-center gap-4 p-4 rounded-xl"
               :class="{
-                'bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30': index === 0,
-                'bg-gradient-to-r from-slate-400/20 to-slate-500/20 border border-slate-400/30': index === 1,
-                'bg-gradient-to-r from-orange-600/20 to-orange-700/20 border border-orange-600/30': index === 2
+                'podium-first': index === 0,
+                'podium-second': index === 1,
+                'podium-third': index === 2
               }"
             >
-              <!-- Rank -->
               <div
-                class="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shrink-0"
+                class="rank-badge w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shrink-0"
                 :class="{
-                  'bg-gradient-to-br from-amber-400 to-orange-500 text-black': index === 0,
-                  'bg-gradient-to-br from-slate-300 to-slate-400 text-black': index === 1,
-                  'bg-gradient-to-br from-orange-500 to-orange-600 text-black': index === 2
+                  'rank-first': index === 0,
+                  'rank-second': index === 1,
+                  'rank-third': index === 2
                 }"
               >
                 {{ index + 1 }}
               </div>
 
-              <!-- Player Info -->
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
                   <div
-                    class="w-4 h-4 rounded-full shrink-0"
+                    class="w-4 h-4 rounded-full shrink-0 border border-dark/20"
                     :style="{ backgroundColor: player.color }"
                   ></div>
-                  <span class="text-white font-bold text-lg truncate">{{ player.name }}</span>
+                  <span class="text-dark font-bold text-lg truncate">{{ player.name }}</span>
                 </div>
               </div>
 
-              <!-- Score -->
               <div class="text-right">
                 <span class="text-2xl font-bold" :class="{
-                  'text-amber-400': index === 0,
-                  'text-slate-300': index === 1,
-                  'text-orange-400': index === 2
+                  'text-gold-dark': index === 0,
+                  'text-dark/70': index === 1,
+                  'text-orange-dark': index === 2
                 }">{{ player.score.toLocaleString() }}</span>
-                <span class="text-slate-500 text-sm ml-1">pts</span>
+                <span class="text-dark/50 text-sm ml-1">pts</span>
               </div>
             </div>
           </div>
 
-          <!-- Return Home Button -->
           <button
             @click="router.push('/')"
-            class="w-full py-4 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-bold text-lg rounded-xl transition-all shadow-lg shadow-violet-500/30"
+            class="btn-home w-full py-4 font-bold text-lg rounded-xl transition-all"
           >
             Return to Home
           </button>
@@ -529,49 +529,273 @@ function startGame() {
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
 
-.modern-dashboard {
-  font-family: 'Rajdhani', sans-serif;
+.dashboard {
+  font-family: 'Outfit', sans-serif;
 }
 
-/* Live indicator pulse */
+/* Color Classes */
+.bg-base { background-color: #0d1117; }
+.bg-teal { background-color: #5A9CB5; }
+.bg-gold { background-color: #FACE68; }
+.bg-orange { background-color: #FAAC68; }
+.bg-coral { background-color: #FA6868; }
+
+.text-dark { color: #2c3e50; }
+.text-teal { color: #7BB8CC; }
+.text-teal-dark { color: #4a8a9f; }
+.text-gold { color: #FFD980; }
+.text-gold-dark { color: #c49a30; }
+.text-orange { color: #FFBE7A; }
+.text-orange-dark { color: #d48a30; }
+.text-coral { color: #FF7A7A; }
+.text-coral-dark { color: #d94545; }
+
+/* Header */
+.header-bar {
+  background: linear-gradient(180deg, rgba(22, 27, 34, 0.98) 0%, rgba(13, 17, 23, 0.95) 100%);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(90, 156, 181, 0.2);
+}
+
+/* Logo */
+.logo-icon {
+  background: linear-gradient(135deg, #FACE68 0%, #FA6868 100%);
+  border: 2px solid rgba(250, 206, 104, 0.5);
+  box-shadow: 0 4px 15px rgba(250, 104, 104, 0.3);
+}
+
+/* Buttons */
+.btn-start {
+  background: linear-gradient(135deg, #7BB8CC 0%, #5A9CB5 100%);
+  color: #0d1117;
+  border: 2px solid rgba(123, 184, 204, 0.6);
+  box-shadow: 0 10px 30px rgba(123, 184, 204, 0.4);
+  font-weight: 800;
+}
+
+.btn-start:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 40px rgba(123, 184, 204, 0.5);
+  background: linear-gradient(135deg, #8EC9DB 0%, #6AADBD 100%);
+}
+
+.btn-start-disabled {
+  background: linear-gradient(135deg, rgba(90, 156, 181, 0.3) 0%, rgba(74, 138, 159, 0.3) 100%);
+  color: rgba(255, 255, 255, 0.7);
+  border: 2px solid rgba(90, 156, 181, 0.4);
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #FA6868 0%, #d94545 100%);
+  color: white;
+  border: 1px solid rgba(250, 104, 104, 0.5);
+}
+
+.btn-home {
+  background: linear-gradient(135deg, #7BB8CC 0%, #5A9CB5 100%);
+  color: #0d1117;
+  border: 2px solid rgba(123, 184, 204, 0.5);
+  box-shadow: 0 10px 30px rgba(123, 184, 204, 0.3);
+  font-weight: 800;
+}
+
+.btn-home:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 40px rgba(123, 184, 204, 0.4);
+  background: linear-gradient(135deg, #8EC9DB 0%, #6AADBD 100%);
+}
+
+/* Status boxes */
+.status-ended {
+  background: rgba(250, 104, 104, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(250, 104, 104, 0.3);
+}
+
+/* Timer */
+.timer-box {
+  backdrop-filter: blur(10px);
+  border: 1px solid;
+}
+
+.timer-normal {
+  background: rgba(22, 27, 34, 0.8);
+  border-color: rgba(90, 156, 181, 0.3);
+}
+
+.timer-warning {
+  background: rgba(250, 104, 104, 0.15);
+  border-color: rgba(250, 104, 104, 0.4);
+}
+
+.timer-danger {
+  background: rgba(250, 104, 104, 0.25);
+  border-color: rgba(250, 104, 104, 0.6);
+}
+
+/* Cards - Light cream interior */
+.card-modal {
+  background: linear-gradient(145deg, #f5f0e6 0%, #ebe5d9 100%);
+  border: 1px solid rgba(200, 180, 150, 0.5);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+}
+
+.leaderboard-card {
+  background: linear-gradient(145deg, #f5f0e6 0%, #ebe5d9 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(200, 180, 150, 0.5);
+}
+
+.leaderboard-header {
+  background: rgba(90, 156, 181, 0.15);
+  border-bottom: 1px solid rgba(200, 180, 150, 0.4);
+}
+
+.leaderboard-item {
+  transition: background 0.2s ease;
+}
+
+.leaderboard-item:hover {
+  background: rgba(90, 156, 181, 0.15);
+}
+
+.spectator-badge {
+  background: linear-gradient(145deg, #f5f0e6 0%, #ebe5d9 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(200, 180, 150, 0.5);
+}
+
+.instructions-card {
+  background: linear-gradient(145deg, #f5f0e6 0%, #ebe5d9 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(200, 180, 150, 0.5);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+}
+
+.close-btn {
+  background: rgba(90, 156, 181, 0.2);
+  border: 1px solid rgba(90, 156, 181, 0.3);
+}
+
+.close-btn:hover {
+  background: rgba(250, 104, 104, 0.3);
+}
+
+.game-over-card {
+  background: linear-gradient(145deg, #f5f0e6 0%, #ebe5d9 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(200, 180, 150, 0.5);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+}
+
+.trophy-icon {
+  background: linear-gradient(135deg, #FACE68 0%, #FA6868 100%);
+  border: 3px solid rgba(250, 206, 104, 0.5);
+  box-shadow: 0 10px 30px rgba(250, 104, 104, 0.4);
+}
+
+/* Podium items */
+.podium-first {
+  background: linear-gradient(135deg, rgba(196, 154, 48, 0.2) 0%, rgba(196, 154, 48, 0.08) 100%);
+  border: 1px solid rgba(196, 154, 48, 0.4);
+}
+
+.podium-second {
+  background: linear-gradient(135deg, rgba(90, 156, 181, 0.15) 0%, rgba(90, 156, 181, 0.05) 100%);
+  border: 1px solid rgba(90, 156, 181, 0.3);
+}
+
+.podium-third {
+  background: linear-gradient(135deg, rgba(212, 138, 48, 0.2) 0%, rgba(212, 138, 48, 0.08) 100%);
+  border: 1px solid rgba(212, 138, 48, 0.4);
+}
+
+.rank-first {
+  background: linear-gradient(135deg, #FACE68 0%, #FAAC68 100%);
+  color: #0d1117;
+  border: 2px solid #FACE68;
+}
+
+.rank-second {
+  background: linear-gradient(135deg, #e0e0e0 0%, #bdbdbd 100%);
+  color: #0d1117;
+  border: 2px solid #e0e0e0;
+}
+
+.rank-third {
+  background: linear-gradient(135deg, #FAAC68 0%, #e09550 100%);
+  color: #0d1117;
+  border: 2px solid #FAAC68;
+}
+
+/* Live indicator */
 .live-indicator span {
   animation: live-pulse 2s ease-in-out infinite;
 }
 
 @keyframes live-pulse {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.5;
-    transform: scale(0.9);
-  }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.9); }
 }
 
-/* Custom scrollbar for leaderboard */
+/* Scrollbar */
 .max-h-72::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
 }
 
 .max-h-72::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(13, 17, 23, 0.5);
+  border-radius: 3px;
 }
 
 .max-h-72::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
+  background: rgba(90, 156, 181, 0.3);
+  border-radius: 3px;
 }
 
 .max-h-72::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(90, 156, 181, 0.5);
 }
 
-/* Smooth hover transitions */
-.transition-all {
-  transition-property: all;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+/* Transitions */
+.instructions-fade-enter-active,
+.instructions-fade-leave-active {
+  transition: all 0.4s ease;
+}
+
+.instructions-fade-enter-from,
+.instructions-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+/* Keyboard keys */
+.key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  margin: 0 0.125rem;
+  background: #5A9CB5;
+  border: 1px solid #4a8a9f;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  font-family: inherit;
+  vertical-align: middle;
+}
+
+h1 {
+  font-weight: 800;
+  letter-spacing: 0.1em;
 }
 </style>
