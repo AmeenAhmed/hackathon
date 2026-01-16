@@ -238,15 +238,15 @@ export default class DashboardScene extends Phaser.Scene {
       for (const obj of mapObjects) {
         const objId = parseInt(obj.id);
 
-        // Server sends: "7"=wall, "8"=wall2, "9"=cactus, "10"=chest, "11"=ammo, "12"=health
-        // These tile indices 7-10 exist in the terrain spritesheet
-        if (objId >= 7 && objId <= 10) {
+        // Server sends: "7"=wall, "8"=wall2, "9"=cactus, "10"=chest (ignored), "11"=ammo, "12"=health
+        // Only render walls and cacti (7-9), skip chests (10)
+        if (objId >= 7 && objId <= 9) {
           // Use the actual tile indices from the spritesheet
           if (obj.x >= 0 && obj.x < mapWidth && obj.y >= 0 && obj.y < mapHeight) {
             this.objectsLayer.putTileAt(objId, obj.x, obj.y);
           }
         }
-        // Skip 11-12 for now as they don't exist in tileset
+        // Skip chest rendering (objId === 10) and loot (11-12) for now
       }
     }
 

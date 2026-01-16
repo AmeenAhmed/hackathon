@@ -369,22 +369,21 @@ export default class MainScene extends Phaser.Scene {
         const pixelX = obj.x * tileSize + tileSize / 2;
         const pixelY = obj.y * tileSize + tileSize / 2;
 
-        // Server sends: "7"=wall, "8"=wall2, "9"=cactus, "10"=chest, "11"=ammo, "12"=health
-        // These tile indices 7-10 exist in the terrain spritesheet
-        if (objId >= 7 && objId <= 10) {
+        // Server sends: "7"=wall, "8"=wall2, "9"=cactus, "10"=chest (ignored), "11"=ammo, "12"=health
+        // Only render walls and cacti (7-9), skip chests (10)
+        if (objId >= 7 && objId <= 9) {
           // Use the actual tile indices from the spritesheet
           if (obj.x >= 0 && obj.x < mapWidth && obj.y >= 0 && obj.y < mapHeight) {
             this.objectsLayer.putTileAt(objId, obj.x, obj.y);
             const tile = this.objectsLayer.getTileAt(obj.x, obj.y);
             if (tile) {
-              // Set collision for walls and obstacles (7, 8, 9) but not chests (10)
-              if (objId === 7 || objId === 8 || objId === 9) {
-                tile.setCollision(true);
-              }
-              // No tinting needed since these are proper sprites
+              // Set collision for walls and obstacles (7, 8, 9)
+              tile.setCollision(true);
             }
           }
-        } else if (objId === 11 || objId === 12) {
+        }
+        // Skip chest rendering (objId === 10)
+        else if (objId === 11 || objId === 12) {
           // Loot (ammo/health) - these don't exist in tileset yet, skip for now
           // Will need separate sprites for these later
         }
