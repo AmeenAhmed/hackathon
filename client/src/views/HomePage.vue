@@ -186,12 +186,12 @@ onUnmounted(() => {
         </div>
 
         <input 
-          class="input-field py-3 px-6 font-bold rounded-xl outline-none text-center w-full"
+          class="input-field py-3 px-6 font-bold rounded-xl outline-none text-center w-full uppercase"
           :class="error ? 'border-coral' : ''"
           v-model="code"
           name="code" 
           id="code"
-          placeholder="Please enter your join code"
+          placeholder="Join Code"
           @input="clearError"
         />
         <input 
@@ -199,7 +199,7 @@ onUnmounted(() => {
           v-model="name"
           name="name" 
           id="name"
-          placeholder="Please enter your name"
+          placeholder="Your Name"
           @input="clearError"
         />
         <button 
