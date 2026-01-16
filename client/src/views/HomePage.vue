@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useWS } from '../composables/useWS';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { usePlayerStore } from '../stores/playerStore';
 
 const { init, send, on, off } = useWS();
@@ -12,6 +12,8 @@ const code = ref('');
 const name = ref('');
 const error = ref('');
 const isLoading = ref(false);
+const route = useRoute();
+const codeRef = ref<HTMLInputElement>();
 
 const isValidCode = computed(() => {
   return !!code.value && !!name.value && code.value.length === 6;
@@ -60,6 +62,10 @@ function joinRoom() {
 
 onMounted(() => {
   init();
+  if(route.query.code && codeRef.value) {
+    code.value = route.query.code.toUpperCase();
+    codeRef.value.value = route.query.code.toUpperCase();
+  }
   on('error', handleError);
   on('roomCreated', handleRoomCreated);
   on('joinedRoom', handleJoinedRoom);
@@ -197,6 +203,7 @@ onUnmounted(() => {
           :value="code"
           name="code" 
           id="code"
+          ref="codeRef"
           placeholder="Join Code"
           @input="handleCodeInput"
         />
