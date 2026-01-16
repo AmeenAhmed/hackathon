@@ -226,6 +226,11 @@ function focusOnPlayer(playerId: string) {
   dashboardManager.focusOnPlayer(playerId);
 }
 
+function copyCode() {
+  const code = route.params.code as string;
+  navigator.clipboard.writeText(code);
+}
+
 function startGame() {
   if (isStarting.value) return;
   isStarting.value = true;
@@ -414,6 +419,27 @@ function startGame() {
         </svg>
         <span class="text-teal-dark text-sm font-bold tracking-wide uppercase">Spectator Mode</span>
       </div>
+
+      <!-- Prominent Game Code Display -->
+      <Transition name="code-fade">
+        <div 
+          v-if="gamePhase === 'waiting'" 
+          class="absolute bottom-8 left-1/2 -translate-x-1/2 z-20"
+        >
+          <div class="game-code-card rounded-2xl p-8 text-center">
+            <div class="text-dark/60 text-lg font-semibold uppercase tracking-widest mb-3">Join with Code</div>
+            <div class="game-code-display text-7xl font-extrabold tracking-[0.3em] text-dark select-all cursor-pointer" @click="copyCode">
+              {{ route.params.code }}
+            </div>
+            <div class="mt-4 flex items-center justify-center gap-2 text-dark/50">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              <span class="text-sm font-medium">Click to copy</span>
+            </div>
+          </div>
+        </div>
+      </Transition>
 
       <!-- Instructions -->
       <Transition name="instructions-fade">
@@ -770,6 +796,52 @@ function startGame() {
 .instructions-fade-leave-to {
   opacity: 0;
   transform: scale(0.95);
+}
+
+.code-fade-enter-active,
+.code-fade-leave-active {
+  transition: all 0.4s ease;
+}
+
+.code-fade-enter-from,
+.code-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(20px);
+}
+
+/* Game Code Card */
+.game-code-card {
+  background: linear-gradient(145deg, #f5f0e6 0%, #ebe5d9 100%);
+  backdrop-filter: blur(20px);
+  border: 2px solid rgba(90, 156, 181, 0.4);
+  box-shadow: 
+    0 25px 50px -12px rgba(0, 0, 0, 0.4),
+    0 0 80px rgba(90, 156, 181, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.game-code-display {
+  background: linear-gradient(135deg, #4a8a9f 0%, #5A9CB5 50%, #4a8a9f 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: none;
+  filter: drop-shadow(0 2px 4px rgba(90, 156, 181, 0.3));
+  animation: code-glow 2s ease-in-out infinite alternate;
+}
+
+.game-code-display:hover {
+  transform: scale(1.02);
+  transition: transform 0.2s ease;
+}
+
+@keyframes code-glow {
+  0% {
+    filter: drop-shadow(0 2px 8px rgba(90, 156, 181, 0.3));
+  }
+  100% {
+    filter: drop-shadow(0 4px 20px rgba(90, 156, 181, 0.5));
+  }
 }
 
 /* Keyboard keys */
