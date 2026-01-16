@@ -241,7 +241,7 @@ export default class MainScene extends Phaser.Scene {
     });
 
     // Add custom cursor
-    this.input.setDefaultCursor('url(/assets/images/pointer.png), crosshair');
+    this.input.setDefaultCursor('url(/assets/images/pointer-big.png), crosshair');
 
     // Setup mouse click handling for firing
     this.input.on('pointerdown', () => {

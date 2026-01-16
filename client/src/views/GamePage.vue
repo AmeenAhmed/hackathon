@@ -256,7 +256,7 @@ onUnmounted(() => {
   image-rendering: pixelated;
   image-rendering: -moz-crisp-edges;
   image-rendering: crisp-edges;
-  cursor: url('/assets/images/pointer.png'), crosshair;
+  cursor: url('/assets/images/pointer-big.png'), crosshair;
 }
 
 /* Loading Screen */
