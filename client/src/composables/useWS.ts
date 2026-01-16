@@ -2,6 +2,8 @@ import Sockette from "sockette";
 import { getWebSocketUrl } from '../config/websocket';
 
 let ws: Sockette | null = null;
+let isOpen = false;
+const messageQueue: Array<{ type: string; content?: any }> = [];
 const subscriptions: Record<string, Array<Function>> = {};
 
 export function useWS() {
@@ -15,7 +17,16 @@ export function useWS() {
     ws = new Sockette(getWebSocketUrl(), {
       timeout: 5e3,
       maxAttempts: 10,
-      onopen: e => {},
+      onopen: e => {
+        isOpen = true;
+        // Flush any queued messages
+        while (messageQueue.length > 0) {
+          const msg = messageQueue.shift();
+          if (msg && ws) {
+            ws.json(msg);
+          }
+        }
+      },
       onmessage: e => {
         if(e.data) {
           const message = JSON.parse(e.data);
@@ -26,18 +37,30 @@ export function useWS() {
           }
         }
       },
-      onreconnect: e => {},
+      onreconnect: e => {
+        isOpen = false; // Connection is reconnecting, not open yet
+      },
       onmaximum: e => {},
       onclose: e => {
         ws = null; // Reset so next init() creates a new connection
+        isOpen = false;
       },
       onerror: e => {}
     });
   }
 
   function send(type: string, content?: any) {
-    if(ws) {
-      ws.json({ type, content });
+    if (!ws) {
+      return;
+    }
+    
+    const message = { type, content };
+    
+    if (isOpen) {
+      ws.json(message);
+    } else {
+      // Queue the message to be sent when connection opens
+      messageQueue.push(message);
     }
   }
 
@@ -65,6 +88,9 @@ export function useWS() {
       ws.close();
       ws = null;
     }
+    isOpen = false;
+    // Clear message queue
+    messageQueue.length = 0;
     // Clear all subscriptions
     Object.keys(subscriptions).forEach(key => {
       delete subscriptions[key];
@@ -72,7 +98,7 @@ export function useWS() {
   }
 
   function isConnected(): boolean {
-    return ws !== null;
+    return ws !== null && isOpen;
   }
   
   return {

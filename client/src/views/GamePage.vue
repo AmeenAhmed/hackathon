@@ -66,13 +66,12 @@ onMounted(async () => {
           resolve();
         });
 
-        setTimeout(() => {
-          // console.log('Sending rejoin request:', { code, playerId });
-          ws.send('rejoinRoom', {
-            code: code as string,
-            playerId: playerId as string
-          });
-        }, 200);
+        // Send immediately - messages are queued until connection opens
+        // console.log('Sending rejoin request:', { code, playerId });
+        ws.send('rejoinRoom', {
+          code: code as string,
+          playerId: playerId as string
+        });
       });
     }
 

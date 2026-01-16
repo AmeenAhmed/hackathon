@@ -208,10 +208,9 @@ onMounted(async () => {
     }
   });
 
-  setTimeout(() => {
-    console.log('Sending dashboard rejoin request:', { code });
-    ws.send('rejoinDashboard', { code });
-  }, 200);
+  // Send immediately - messages are queued until connection opens
+  console.log('Sending dashboard rejoin request:', { code });
+  ws.send('rejoinDashboard', { code });
 
   dashboardManager.init(ws);
 });
