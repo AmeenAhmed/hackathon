@@ -862,16 +862,19 @@ func (c *Client) handleRejoinRoom(code string, playerID string) {
 		c.ID = playerID
 		spawnX, spawnY := room.getRandomSpawnPoint()
 		c.Player = &Player{
-			ID:          existingPlayer.ID,
-			Name:        existingPlayer.Name,
-			Color:       existingPlayer.Color,
-			X:           spawnX, // New spawn point instead of old position
-			Y:           spawnY, // New spawn point instead of old position
-			Animation:   "idle",
-			Direction:   existingPlayer.Direction,
-			IsProtected: false, // No spawn protection on rejoin
-			Health:      100,
-			MaxHealth:   100,
+			ID:                 existingPlayer.ID,
+			Name:               existingPlayer.Name,
+			Color:              existingPlayer.Color,
+			X:                  spawnX, // New spawn point instead of old position
+			Y:                  spawnY, // New spawn point instead of old position
+			Animation:          "idle",
+			Direction:          existingPlayer.Direction,
+			IsProtected:        false, // No spawn protection on rejoin
+			Health:             100,
+			MaxHealth:          100,
+			CorrectAnswers:     existingPlayer.CorrectAnswers,
+			QuestionsAttempted: existingPlayer.QuestionsAttempted,
+			Kills:              existingPlayer.Kills,
 		}
 		// Set default direction if empty
 		if c.Player.Direction == "" {

@@ -134,6 +134,20 @@ export default class MainScene extends Phaser.Scene {
   create(): void {
     // console.log('MainScene create() called');
 
+    // Restore score data from player store (for page refresh/rejoin)
+    const playerStore = (window as any).playerStore;
+    if (playerStore) {
+      if (playerStore.correctAnswers !== undefined) {
+        this.correctAnswers = playerStore.correctAnswers;
+      }
+      if (playerStore.questionsAttempted !== undefined) {
+        this.questionsAttempted = playerStore.questionsAttempted;
+      }
+      if (playerStore.kills !== undefined) {
+        this.totalKills = playerStore.kills;
+      }
+    }
+
     // Define tilemap dimensions - always 200x200 to match server
     const tileSize = 16;
     const mapWidth = 200;  // Fixed to match server map size
@@ -220,6 +234,11 @@ export default class MainScene extends Phaser.Scene {
 
     // Start the UI scene in parallel
     this.scene.launch('UIScene');
+
+    // Update score UI with restored values (after a brief delay to ensure UI scene is ready)
+    this.time.delayedCall(100, () => {
+      this.updateScoreUI();
+    });
 
     // Add crosshair cursor
     this.input.setDefaultCursor('crosshair');
