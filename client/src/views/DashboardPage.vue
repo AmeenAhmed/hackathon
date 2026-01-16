@@ -305,7 +305,7 @@ function startGame() {
         <div class="flex flex-col">
           <h1 class="text-3xl font-bold tracking-wide uppercase">
             <span class="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">WAY</span>
-            <span class="bg-gradient-to-r from-fuchsia-400 to-pink-500 bg-clip-text text-transparent">WAR</span>
+            <span class="bg-gradient-to-r from-fuchsia-400 to-pink-500 bg-clip-text text-transparent">ARENA</span>
           </h1>
           <div class="flex items-center gap-2">
             <span class="live-indicator flex items-center gap-1.5 text-sm text-emerald-400 font-semibold uppercase">

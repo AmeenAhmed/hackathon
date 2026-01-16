@@ -6,11 +6,11 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: waywar-server
+    container_name: wayarena-server
     ports:
       - "8090:8080"
     networks:
-      - waywar-network
+      - wayarena-network
     restart: unless-stopped
     environment:
       - PORT=8080
@@ -26,11 +26,11 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
-    container_name: waywar-client
+    container_name: wayarena-client
     ports:
       - "8091:80"
     networks:
-      - waywar-network
+      - wayarena-network
     depends_on:
       - server
     restart: unless-stopped
@@ -49,11 +49,11 @@ services:
   #   build:
   #     context: ./server
   #     dockerfile: Dockerfile.dev
-  #   container_name: waywar-server-dev
+  #   container_name: wayarena-server-dev
   #   ports:
   #     - "8080:8080"
   #   networks:
-  #     - waywar-network
+  #     - wayarena-network
   #   volumes:
   #     - ./server:/app
   #   command: go run main.go
@@ -65,11 +65,11 @@ services:
   #   build:
   #     context: ./client
   #     dockerfile: Dockerfile.dev
-  #   container_name: waywar-client-dev
+  #   container_name: wayarena-client-dev
   #   ports:
   #     - "8081:8081"
   #   networks:
-  #     - waywar-network
+  #     - wayarena-network
   #   volumes:
   #     - ./client:/app
   #     - /app/node_modules
@@ -81,7 +81,7 @@ services:
   #     - server-dev
 
 networks:
-  waywar-network:
+  wayarena-network:
     driver: bridge
 
 volumes:

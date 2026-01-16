@@ -157,6 +157,7 @@ func (rm *RoomManager) CreateRoom() *Room {
 		GameState: GameState{
 			Players:   make(map[string]*Player),
 			GamePhase: "waiting",
+			Timer:     300, // 5 minutes
 			Score:     make(map[string]int),
 		},
 		MapData: mapData,

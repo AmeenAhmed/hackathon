@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Docker Compose convenience script for WayWar
+# Docker Compose convenience script for WayArena
 
 set -e
 
@@ -48,15 +48,15 @@ check_docker
 # Parse command
 case "$1" in
     start)
-        print_color "Starting WayWar in production mode..." "$GREEN"
+        print_color "Starting WayArena in production mode..." "$GREEN"
         docker-compose up -d
-        print_color "WayWar is running!" "$GREEN"
+        print_color "WayArena is running!" "$GREEN"
         print_color "Client: http://localhost" "$YELLOW"
         print_color "Server WebSocket: ws://localhost/ws" "$YELLOW"
         ;;
 
     start-dev)
-        print_color "Starting WayWar in development mode..." "$GREEN"
+        print_color "Starting WayArena in development mode..." "$GREEN"
         # Check if dev services exist in docker-compose.yml
         if docker-compose config --services | grep -q "server-dev"; then
             docker-compose up server-dev client-dev
@@ -67,25 +67,25 @@ case "$1" in
         ;;
 
     stop)
-        print_color "Stopping WayWar..." "$YELLOW"
+        print_color "Stopping WayArena..." "$YELLOW"
         docker-compose down
-        print_color "WayWar stopped." "$GREEN"
+        print_color "WayArena stopped." "$GREEN"
         ;;
 
     restart)
-        print_color "Restarting WayWar..." "$YELLOW"
+        print_color "Restarting WayArena..." "$YELLOW"
         docker-compose restart
-        print_color "WayWar restarted." "$GREEN"
+        print_color "WayArena restarted." "$GREEN"
         ;;
 
     build)
-        print_color "Building WayWar Docker images..." "$GREEN"
+        print_color "Building WayArena Docker images..." "$GREEN"
         docker-compose build
         print_color "Build complete!" "$GREEN"
         ;;
 
     rebuild)
-        print_color "Rebuilding WayWar Docker images (no cache)..." "$GREEN"
+        print_color "Rebuilding WayArena Docker images (no cache)..." "$GREEN"
         docker-compose build --no-cache
         print_color "Rebuild complete!" "$GREEN"
         ;;
@@ -99,12 +99,12 @@ case "$1" in
         ;;
 
     status)
-        print_color "WayWar services status:" "$GREEN"
+        print_color "WayArena services status:" "$GREEN"
         docker-compose ps
         ;;
 
     clean)
-        print_color "Cleaning up WayWar..." "$YELLOW"
+        print_color "Cleaning up WayArena..." "$YELLOW"
         docker-compose down -v --rmi local
         print_color "Cleanup complete!" "$GREEN"
         ;;

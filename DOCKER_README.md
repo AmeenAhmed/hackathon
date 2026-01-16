@@ -1,4 +1,4 @@
-# Docker Setup for WayWar Game
+# Docker Setup for WayArena Game
 
 This project includes Docker configurations for both development and production environments.
 
@@ -59,7 +59,7 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 ### Network
 
-- All services communicate through `waywar-network` (bridge network)
+- All services communicate through `wayarena-network` (bridge network)
 - nginx proxies WebSocket connections from `/ws` to the backend server
 
 ## Building Images
@@ -68,10 +68,10 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 ```bash
 # Build server
-docker build -t waywar-server ./server
+docker build -t wayarena-server ./server
 
 # Build client
-docker build -t waywar-client ./client
+docker build -t wayarena-client ./client
 ```
 
 ### Build with Docker Compose:
@@ -122,8 +122,8 @@ docker-compose exec client sh
 docker-compose ps
 
 # Health check details
-docker inspect waywar-server | grep -A 10 Health
-docker inspect waywar-client | grep -A 10 Health
+docker inspect wayarena-server | grep -A 10 Health
+docker inspect wayarena-client | grep -A 10 Health
 ```
 
 ## Volume Mounts (Development)

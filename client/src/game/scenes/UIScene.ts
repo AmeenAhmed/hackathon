@@ -65,7 +65,7 @@ export default class UIScene extends Phaser.Scene {
     logoW.setOrigin(0.5, 0.5);
     this.hudContainer.add(logoW);
 
-    // WAYWAR text
+    // WAYARENA text
     const wayText = this.add.text(leftX + 44, headerHeight / 2 - 8, 'WAY', {
       fontSize: '16px',
       color: '#22d3ee',
@@ -75,17 +75,17 @@ export default class UIScene extends Phaser.Scene {
     wayText.setOrigin(0, 0.5);
     this.hudContainer.add(wayText);
 
-    const warText = this.add.text(leftX + 44, headerHeight / 2 + 8, 'WAR', {
+    const arenaText = this.add.text(leftX + 44, headerHeight / 2 + 8, 'ARENA', {
       fontSize: '16px',
       color: '#f472b6',
       fontStyle: 'bold',
       fontFamily: 'Arial'
     });
-    warText.setOrigin(0, 0.5);
-    this.hudContainer.add(warText);
+    arenaText.setOrigin(0, 0.5);
+    this.hudContainer.add(arenaText);
 
     // Room code badge
-    const roomBadgeX = leftX + 100;
+    const roomBadgeX = leftX + 120;
     const roomBadgeBg = this.add.rectangle(roomBadgeX + 45, headerHeight / 2, 90, 28, 0x1e293b, 1);
     roomBadgeBg.setStrokeStyle(1, 0x475569);
     this.hudContainer.add(roomBadgeBg);

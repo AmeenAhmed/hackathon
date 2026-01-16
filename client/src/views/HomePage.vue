@@ -83,7 +83,7 @@ onUnmounted(() => {
         </div>
         <h1 class="text-4xl font-bold tracking-wide uppercase">
           <span class="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">WAY</span>
-          <span class="bg-gradient-to-r from-fuchsia-400 to-pink-500 bg-clip-text text-transparent">WAR</span>
+          <span class="bg-gradient-to-r from-fuchsia-400 to-pink-500 bg-clip-text text-transparent">ARENA</span>
         </h1>
       </div>
       
