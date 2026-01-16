@@ -183,14 +183,33 @@ onUnmounted(() => {
 <template>
   <div class="game-page">
     <div v-if="isLoading" class="loading">
-      <h2>Connecting to game...</h2>
-      <div class="spinner"></div>
+      <div class="loading-card">
+        <div class="logo-container">
+          <div class="logo-icon">
+            <span>W</span>
+          </div>
+          <h1 class="logo-text">
+            <span class="way">WAY</span>
+            <span class="arena">ARENA</span>
+          </h1>
+        </div>
+        <h2>Connecting to game...</h2>
+        <div class="spinner"></div>
+        <p class="loading-hint">Preparing your arena experience</p>
+      </div>
     </div>
 
     <div v-else-if="error" class="error">
-      <h2>Error</h2>
-      <p>{{ error }}</p>
-      <button @click="goHome">Return Home</button>
+      <div class="error-card">
+        <div class="error-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h2>Error</h2>
+        <p>{{ error }}</p>
+        <button @click="goHome">Return Home</button>
+      </div>
     </div>
 
     <div v-else id="game-container" class="game-container"></div>
@@ -215,14 +234,17 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
+
 .game-page {
   width: 100vw;
   height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #1a1a1a;
+  background-color: #0d1117;
   overflow: hidden;
+  font-family: 'Outfit', sans-serif;
 }
 
 .game-container {
@@ -237,19 +259,88 @@ onUnmounted(() => {
   image-rendering: crisp-edges;
 }
 
-.loading, .error {
+/* Loading Screen */
+.loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d1117;
+}
+
+.loading-card {
   text-align: center;
+  padding: 3rem;
+  background: linear-gradient(145deg, rgba(22, 27, 34, 0.95) 0%, rgba(13, 17, 23, 0.98) 100%);
+  border: 1px solid rgba(90, 156, 181, 0.3);
+  border-radius: 1.5rem;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  min-width: 320px;
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.logo-icon {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, #FACE68 0%, #FA6868 100%);
+  border: 2px solid rgba(250, 206, 104, 0.5);
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(250, 104, 104, 0.3);
+}
+
+.logo-icon span {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #0d1117;
+}
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  line-height: 1.1;
+}
+
+.logo-text .way {
+  font-size: 1.5rem;
+  font-weight: 800;
   color: white;
+  letter-spacing: 0.1em;
+}
+
+.logo-text .arena {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #FF7A7A;
+  letter-spacing: 0.1em;
+}
+
+.loading h2 {
+  color: #7BB8CC;
+  font-weight: 700;
+  font-size: 1.25rem;
+  margin-bottom: 1.5rem;
 }
 
 .spinner {
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #3498db;
+  border: 3px solid rgba(90, 156, 181, 0.2);
+  border-top: 3px solid #5A9CB5;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 50px;
+  height: 50px;
   animation: spin 1s linear infinite;
-  margin: 20px auto;
+  margin: 0 auto 1.5rem;
 }
 
 @keyframes spin {
@@ -257,19 +348,77 @@ onUnmounted(() => {
   100% { transform: rotate(360deg); }
 }
 
+.loading-hint {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.875rem;
+}
+
+/* Error Screen */
+.error {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d1117;
+}
+
+.error-card {
+  text-align: center;
+  padding: 3rem;
+  background: linear-gradient(145deg, rgba(22, 27, 34, 0.95) 0%, rgba(13, 17, 23, 0.98) 100%);
+  border: 1px solid rgba(250, 104, 104, 0.3);
+  border-radius: 1.5rem;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  min-width: 320px;
+  max-width: 400px;
+}
+
+.error-icon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 1.5rem;
+  background: rgba(250, 104, 104, 0.15);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.error-icon svg {
+  width: 32px;
+  height: 32px;
+  color: #FF7A7A;
+}
+
+.error h2 {
+  color: #FF7A7A;
+  font-weight: 700;
+  font-size: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.error p {
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+}
+
 .error button {
-  margin-top: 20px;
-  padding: 10px 20px;
-  background-color: #3498db;
+  padding: 12px 28px;
+  background: linear-gradient(135deg, #5A9CB5 0%, #4a8a9f 100%);
   color: white;
-  border: none;
-  border-radius: 5px;
+  border: 2px solid rgba(90, 156, 181, 0.5);
+  border-radius: 10px;
   cursor: pointer;
   font-size: 16px;
+  font-weight: 700;
+  transition: all 0.3s ease;
 }
 
 .error button:hover {
-  background-color: #2980b9;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(90, 156, 181, 0.3);
 }
 
 /* Game Ended Overlay */
@@ -285,63 +434,67 @@ onUnmounted(() => {
 }
 
 .game-ended-modal {
-  background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
-  border: 2px solid #fbbf24;
+  background: linear-gradient(145deg, rgba(22, 27, 34, 0.98) 0%, rgba(13, 17, 23, 0.99) 100%);
+  border: 2px solid rgba(90, 156, 181, 0.4);
   border-radius: 20px;
   padding: 40px;
   text-align: center;
   max-width: 400px;
-  box-shadow: 0 0 40px rgba(251, 191, 36, 0.3);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.6);
 }
 
 .trophy-icon {
   width: 80px;
   height: 80px;
   margin: 0 auto 20px;
-  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  background: linear-gradient(135deg, #FACE68 0%, #FA6868 100%);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 3px solid rgba(250, 206, 104, 0.5);
+  box-shadow: 0 10px 30px rgba(250, 104, 104, 0.3);
 }
 
 .trophy-icon svg {
   width: 40px;
   height: 40px;
-  color: #1e1e2e;
+  color: #0d1117;
 }
 
 .game-ended-modal h2 {
   font-size: 32px;
-  color: #fbbf24;
+  color: #FFD980;
   margin-bottom: 12px;
-  font-weight: bold;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 2px;
 }
 
 .game-ended-modal p {
-  color: #a1a1aa;
+  color: rgba(255, 255, 255, 0.7);
   font-size: 16px;
   margin-bottom: 24px;
 }
 
 .home-button {
-  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+  background: linear-gradient(135deg, #5A9CB5 0%, #4a8a9f 100%);
   color: white;
-  border: none;
+  border: 2px solid rgba(90, 156, 181, 0.5);
   padding: 14px 32px;
   border-radius: 10px;
   font-size: 16px;
-  font-weight: bold;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   text-transform: uppercase;
   letter-spacing: 1px;
+  box-shadow: 0 10px 30px rgba(90, 156, 181, 0.3);
 }
 
 .home-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.4);
+  box-shadow: 0 15px 40px rgba(90, 156, 181, 0.4);
+  background: linear-gradient(135deg, #6AADBD 0%, #5A9CB5 100%);
 }
 </style>

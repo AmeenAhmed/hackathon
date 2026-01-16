@@ -38,27 +38,27 @@ export default class UIScene extends Phaser.Scene {
     // Create the main HUD container
     this.hudContainer = this.add.container(0, 0);
 
-    // === TOP HEADER BAR ===
+    // === TOP HEADER BAR === (Dark background)
     const headerHeight = 50;
-    const headerBg = this.add.rectangle(screenWidth / 2, headerHeight / 2, screenWidth, headerHeight, 0x0f172a, 0.92);
+    const headerBg = this.add.rectangle(screenWidth / 2, headerHeight / 2, screenWidth, headerHeight, 0x0d1117, 0.95);
     this.hudContainer.add(headerBg);
 
-    // Bottom border line
-    const borderLine = this.add.rectangle(screenWidth / 2, headerHeight, screenWidth, 2, 0x8b5cf6, 0.8);
+    // Bottom border line (teal accent)
+    const borderLine = this.add.rectangle(screenWidth / 2, headerHeight, screenWidth, 2, 0x5A9CB5, 0.6);
     this.hudContainer.add(borderLine);
 
     // === LEFT: LOGO + ROOM CODE ===
     const leftX = 16;
 
-    // Logo background
-    const logoBg = this.add.rectangle(leftX + 18, headerHeight / 2, 36, 36, 0x8b5cf6, 1);
-    logoBg.setStrokeStyle(0);
+    // Logo background (gradient effect - gold to coral)
+    const logoBg = this.add.rectangle(leftX + 18, headerHeight / 2, 36, 36, 0xFACE68, 1);
+    logoBg.setStrokeStyle(2, 0xFA6868);
     this.hudContainer.add(logoBg);
 
     // Logo "W" text
     const logoW = this.add.text(leftX + 18, headerHeight / 2, 'W', {
       fontSize: '22px',
-      color: '#ffffff',
+      color: '#0d1117',
       fontStyle: 'bold',
       fontFamily: 'Arial'
     });
@@ -68,7 +68,7 @@ export default class UIScene extends Phaser.Scene {
     // WAYARENA text
     const wayText = this.add.text(leftX + 44, headerHeight / 2 - 8, 'WAY', {
       fontSize: '16px',
-      color: '#22d3ee',
+      color: '#ffffff',
       fontStyle: 'bold',
       fontFamily: 'Arial'
     });
@@ -77,7 +77,7 @@ export default class UIScene extends Phaser.Scene {
 
     const arenaText = this.add.text(leftX + 44, headerHeight / 2 + 8, 'ARENA', {
       fontSize: '16px',
-      color: '#f472b6',
+      color: '#FF7A7A',
       fontStyle: 'bold',
       fontFamily: 'Arial'
     });
@@ -86,13 +86,13 @@ export default class UIScene extends Phaser.Scene {
 
     // Room code badge
     const roomBadgeX = leftX + 120;
-    const roomBadgeBg = this.add.rectangle(roomBadgeX + 45, headerHeight / 2, 90, 28, 0x1e293b, 1);
-    roomBadgeBg.setStrokeStyle(1, 0x475569);
+    const roomBadgeBg = this.add.rectangle(roomBadgeX + 45, headerHeight / 2, 90, 28, 0x161b22, 1);
+    roomBadgeBg.setStrokeStyle(1, 0x5A9CB5);
     this.hudContainer.add(roomBadgeBg);
 
     this.roomText = this.add.text(roomBadgeX + 45, headerHeight / 2, mainScene.roomCode || 'ROOM', {
       fontSize: '14px',
-      color: '#94a3b8',
+      color: '#7BB8CC',
       fontStyle: 'bold',
       fontFamily: 'monospace'
     });
@@ -103,8 +103,8 @@ export default class UIScene extends Phaser.Scene {
     const centerX = screenWidth / 2;
 
     // Timer container background
-    const timerBg = this.add.rectangle(centerX, headerHeight / 2, 140, 36, 0x1e293b, 1);
-    timerBg.setStrokeStyle(2, 0xfbbf24);
+    const timerBg = this.add.rectangle(centerX, headerHeight / 2, 140, 36, 0x161b22, 1);
+    timerBg.setStrokeStyle(2, 0xFACE68);
     this.hudContainer.add(timerBg);
 
     // Timer icon
@@ -117,7 +117,7 @@ export default class UIScene extends Phaser.Scene {
     // Timer text
     this.timerText = this.add.text(centerX + 10, headerHeight / 2, '05:00', {
       fontSize: '22px',
-      color: '#fbbf24',
+      color: '#FFD980',
       fontStyle: 'bold',
       fontFamily: 'monospace'
     });
@@ -131,8 +131,8 @@ export default class UIScene extends Phaser.Scene {
     // Player count (far right)
     const statBoxWidth = 65;
     const playersX = screenWidth - rightPadding - (statBoxWidth / 2);
-    const playersBg = this.add.rectangle(playersX, headerHeight / 2, statBoxWidth, 32, 0x1e293b, 1);
-    playersBg.setStrokeStyle(1, 0x38bdf8);
+    const playersBg = this.add.rectangle(playersX, headerHeight / 2, statBoxWidth, 32, 0x161b22, 1);
+    playersBg.setStrokeStyle(1, 0x5A9CB5);
     this.hudContainer.add(playersBg);
 
     const playersIcon = this.add.text(playersX - 16, headerHeight / 2, '👥', { fontSize: '16px' });
@@ -141,7 +141,7 @@ export default class UIScene extends Phaser.Scene {
 
     this.playerCountText = this.add.text(playersX + 14, headerHeight / 2, '1', {
       fontSize: '18px',
-      color: '#38bdf8',
+      color: '#7BB8CC',
       fontStyle: 'bold',
       fontFamily: 'monospace'
     });
@@ -150,7 +150,7 @@ export default class UIScene extends Phaser.Scene {
 
     // Answers (next to player count)
     const answersX = playersX - statBoxWidth - boxSpacing;
-    const answersBg = this.add.rectangle(answersX, headerHeight / 2, statBoxWidth, 32, 0x1e293b, 1);
+    const answersBg = this.add.rectangle(answersX, headerHeight / 2, statBoxWidth, 32, 0x161b22, 1);
     answersBg.setStrokeStyle(1, 0x4ade80);
     this.hudContainer.add(answersBg);
 
@@ -173,8 +173,8 @@ export default class UIScene extends Phaser.Scene {
 
     // Kills (next to answers)
     const killsX = answersX - statBoxWidth - boxSpacing;
-    const killsBg = this.add.rectangle(killsX, headerHeight / 2, statBoxWidth, 32, 0x1e293b, 1);
-    killsBg.setStrokeStyle(1, 0xf87171);
+    const killsBg = this.add.rectangle(killsX, headerHeight / 2, statBoxWidth, 32, 0x161b22, 1);
+    killsBg.setStrokeStyle(1, 0xFA6868);
     this.hudContainer.add(killsBg);
 
     const killsIcon = this.add.text(killsX - 16, headerHeight / 2, '💀', { fontSize: '16px' });
@@ -183,7 +183,7 @@ export default class UIScene extends Phaser.Scene {
 
     this.killsText = this.add.text(killsX + 14, headerHeight / 2, '0', {
       fontSize: '18px',
-      color: '#f87171',
+      color: '#FF7A7A',
       fontStyle: 'bold',
       fontFamily: 'monospace'
     });
@@ -193,8 +193,8 @@ export default class UIScene extends Phaser.Scene {
     // Gun & Ammo (next to kills)
     const gunBoxWidth = 145;
     const gunX = killsX - (statBoxWidth / 2) - boxSpacing - (gunBoxWidth / 2);
-    const gunBg = this.add.rectangle(gunX, headerHeight / 2, gunBoxWidth, 32, 0x1e293b, 1);
-    gunBg.setStrokeStyle(1, 0xfde047);
+    const gunBg = this.add.rectangle(gunX, headerHeight / 2, gunBoxWidth, 32, 0x161b22, 1);
+    gunBg.setStrokeStyle(1, 0xFACE68);
     this.hudContainer.add(gunBg);
 
     const gunIcon = this.add.text(gunX - 58, headerHeight / 2, '🔫', { fontSize: '16px' });
@@ -203,7 +203,7 @@ export default class UIScene extends Phaser.Scene {
 
     this.gunText = this.add.text(gunX - 12, headerHeight / 2, 'Pistol', {
       fontSize: '16px',
-      color: '#fde047',
+      color: '#FFD980',
       fontStyle: 'bold'
     });
     this.gunText.setOrigin(0.5, 0.5);
@@ -211,7 +211,7 @@ export default class UIScene extends Phaser.Scene {
 
     this.ammoText = this.add.text(gunX + 48, headerHeight / 2, '6/6', {
       fontSize: '16px',
-      color: '#fb923c',
+      color: '#FFBE7A',
       fontStyle: 'bold',
       fontFamily: 'monospace'
     });
@@ -225,14 +225,14 @@ export default class UIScene extends Phaser.Scene {
     // === WAITING TEXT (centered below header) ===
     const waitingY = headerHeight + 30;
 
-    const waitingBg = this.add.rectangle(screenWidth / 2, waitingY, 380, 28, 0x78350f, 0.95);
-    waitingBg.setStrokeStyle(1, 0xfbbf24);
+    const waitingBg = this.add.rectangle(screenWidth / 2, waitingY, 380, 28, 0x161b22, 0.95);
+    waitingBg.setStrokeStyle(1, 0xFACE68);
     waitingBg.setScrollFactor(0);
     waitingBg.setDepth(1000);
 
     this.waitingText = this.add.text(screenWidth / 2, waitingY, '⚠ Waiting for game • Shooting disabled', {
       fontSize: '13px',
-      color: '#fde047',
+      color: '#FFD980',
       fontStyle: 'bold',
       align: 'center'
     });
@@ -254,14 +254,14 @@ export default class UIScene extends Phaser.Scene {
     (this as any).waitingBg = waitingBg;
 
     // === BOTTOM CENTER: CONTROLS HINT ===
-    this.controlsBg = this.add.rectangle(screenWidth / 2, screenHeight - 25, 400, 32, 0x0f172a, 0.8);
-    this.controlsBg.setStrokeStyle(1, 0x475569);
+    this.controlsBg = this.add.rectangle(screenWidth / 2, screenHeight - 25, 400, 32, 0x0d1117, 0.9);
+    this.controlsBg.setStrokeStyle(1, 0x5A9CB5);
     this.controlsBg.setScrollFactor(0);
     this.controlsBg.setDepth(1000);
 
     this.controlsText = this.add.text(screenWidth / 2, screenHeight - 25, 'WASD Move  •  1-3 Weapons  •  Click/Space Shoot', {
       fontSize: '13px',
-      color: '#e2e8f0',
+      color: '#7BB8CC',
       fontFamily: 'monospace'
     });
     this.controlsText.setOrigin(0.5, 0.5);
@@ -300,7 +300,7 @@ export default class UIScene extends Phaser.Scene {
       this.timerText.setText(this.formatTime(seconds));
       
       if (seconds <= 60) {
-        this.timerText.setColor('#ef4444');
+        this.timerText.setColor('#FF7A7A');
         if (!this.timerActive) {
           this.timerActive = true;
           this.tweens.add({
@@ -313,9 +313,9 @@ export default class UIScene extends Phaser.Scene {
           });
         }
       } else if (seconds <= 120) {
-        this.timerText.setColor('#f97316');
+        this.timerText.setColor('#FFBE7A');
       } else {
-        this.timerText.setColor('#fbbf24');
+        this.timerText.setColor('#FFD980');
       }
     }
   }
@@ -332,7 +332,7 @@ export default class UIScene extends Phaser.Scene {
     if (this.ammoText) {
       const text = current > 0 ? `${current}/${max}` : 'EMPTY';
       this.ammoText.setText(text);
-      this.ammoText.setColor(current > 0 ? '#fb923c' : '#ef4444');
+      this.ammoText.setColor(current > 0 ? '#FFBE7A' : '#FF7A7A');
     }
   }
 
@@ -378,28 +378,28 @@ export default class UIScene extends Phaser.Scene {
       screenWidth,
       screenHeight,
       0x000000,
-      0.7
+      0.85
     );
     gameOverBg.setScrollFactor(0);
     gameOverBg.setDepth(2000);
 
-    // Create game over container
+    // Create game over container (dark background)
     const containerBg = this.add.rectangle(
       screenWidth / 2,
       screenHeight / 2,
       380,
       280,
-      0x1e1e2e,
-      0.95
+      0x161b22,
+      0.98
     );
-    containerBg.setStrokeStyle(3, 0xfbbf24);
+    containerBg.setStrokeStyle(2, 0x5A9CB5);
     containerBg.setScrollFactor(0);
     containerBg.setDepth(2001);
 
     // Game over title
     const gameOverTitle = this.add.text(screenWidth / 2, screenHeight / 2 - 100, 'GAME OVER!', {
       fontSize: '42px',
-      color: '#fbbf24',
+      color: '#FFD980',
       fontStyle: 'bold',
       fontFamily: 'Arial'
     });
@@ -414,7 +414,7 @@ export default class UIScene extends Phaser.Scene {
     // Kills stat row
     const killsRow = this.add.text(screenWidth / 2, statsStartY, `💀 Kills: ${kills}`, {
       fontSize: '22px',
-      color: '#f87171',
+      color: '#FF7A7A',
       fontStyle: 'bold'
     });
     killsRow.setOrigin(0.5, 0.5);
@@ -435,7 +435,7 @@ export default class UIScene extends Phaser.Scene {
     const totalScore = kills * 100 + correctAnswers * 50;
     const scoreText = this.add.text(screenWidth / 2, statsStartY + statsSpacing * 2 + 10, `Total Score: ${totalScore}`, {
       fontSize: '28px',
-      color: '#22d3ee',
+      color: '#7BB8CC',
       fontStyle: 'bold'
     });
     scoreText.setOrigin(0.5, 0.5);
@@ -445,7 +445,7 @@ export default class UIScene extends Phaser.Scene {
     // Instruction text
     const instructionText = this.add.text(screenWidth / 2, screenHeight / 2 + 110, 'Check dashboard for final standings', {
       fontSize: '16px',
-      color: '#94a3b8'
+      color: 'rgba(255, 255, 255, 0.6)'
     });
     instructionText.setOrigin(0.5, 0.5);
     instructionText.setScrollFactor(0);
