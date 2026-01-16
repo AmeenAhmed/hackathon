@@ -249,6 +249,9 @@ export default class DashboardScene extends Phaser.Scene {
         // Skip 11-12 for now as they don't exist in tileset
       }
     }
+
+    // Set up collision for walls and cacti (tiles with ID 7, 8, 9) - for players only
+    this.objectsLayer.setCollisionBetween(7, 9);
   }
 
   public updateGameState(gameState: GameState): void {
@@ -563,8 +566,8 @@ export default class DashboardScene extends Phaser.Scene {
     const { bulletId, ownerId, x, y, angle, gunType } = data;
     console.log('DashboardScene spawnBullet called:', { bulletId, x, y, angle });
 
-    // Create bullet sprite (using 'bullets' key, not 'bullet')
-    const bullet = this.add.sprite(x, y, 'bullets', 0);
+    // Create bullet sprite (no physics for now to avoid collision issues)
+    const bullet = this.add.sprite(x, y, 'bullets', 0) as any;
     bullet.setScale(1);
     bullet.setRotation(angle);
     bullet.setDepth(9);
@@ -572,20 +575,34 @@ export default class DashboardScene extends Phaser.Scene {
     // Store bullet
     this.bullets.set(bulletId, bullet);
 
-    // Calculate end position using angle (similar to MainScene)
+    // Calculate end position using angle
     const distance = 1500;
     const bulletSpeed = 500; // pixels per second
     const duration = distance / bulletSpeed * 1000;
     const endX = x + Math.cos(angle) * distance;
     const endY = y + Math.sin(angle) * distance;
 
-    // Move bullet
-    this.tweens.add({
+    // Create tween for bullet movement
+    const tween = this.tweens.add({
       targets: bullet,
       x: endX,
       y: endY,
       duration: duration,
       ease: 'Linear',
+      onUpdate: () => {
+        // Check wall collision during movement
+        if (this.objectsLayer && bullet && bullet.active !== false) {
+          const tileX = Math.floor(bullet.x / 16);
+          const tileY = Math.floor(bullet.y / 16);
+          const tile = this.objectsLayer.getTileAt(tileX, tileY);
+
+          if (tile && tile.collides) {
+            // Bullet hit a wall
+            tween.stop();
+            this.destroyBullet(bulletId);
+          }
+        }
+      },
       onComplete: () => {
         this.destroyBullet(bulletId);
       }

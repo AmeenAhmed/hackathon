@@ -75,6 +75,7 @@ export default class MainScene extends Phaser.Scene {
   private bulletCheckCounter: number = 0;
   private activeBullets: Map<string, any> = new Map(); // Track our bullets by ID
   private bulletIdCounter: number = 0;
+  private currentGameState: any = null; // Store current game state for reference
   private playerHealth: Map<string, number> = new Map(); // Track player health
   private otherPlayerBullets: Map<string, Phaser.GameObjects.Sprite> = new Map(); // Track other players' bullets
   private isDead: boolean = false;
@@ -157,6 +158,11 @@ export default class MainScene extends Phaser.Scene {
 
     // Create local player (always visible, even during waiting)
     this.createLocalPlayer();
+
+    // Set up collision between player and walls after both are created
+    if (this.localPlayer && this.objectsLayer) {
+      this.physics.add.collider(this.localPlayer, this.objectsLayer);
+    }
 
     // Setup camera to follow player in the larger world
     // Use the actual map size (200 tiles * 16 pixels)
@@ -256,6 +262,9 @@ export default class MainScene extends Phaser.Scene {
       maxSize: 100, // Pool size for performance
       runChildUpdate: true
     });
+
+    // Set up collision between bullets and walls after objects layer is created
+    // This will be called after tilemap is created
   }
 
   createTilemap(mapWidth: number, mapHeight: number, tileSize: number): void {
@@ -385,6 +394,14 @@ export default class MainScene extends Phaser.Scene {
     // Enable culling for objects layer too
     this.objectsLayer.setCullPadding(2, 2);
 
+    // Set up collision between walls (tiles with ID 7, 8, 9) for players only
+    this.objectsLayer.setCollisionBetween(7, 9); // Walls and cacti
+
+    // Bullet collision temporarily disabled to fix crash
+    // TODO: Re-implement bullet-wall collision
+
+    // Player collision will be set up after player is created
+
     // console.log(`Tilemap created: ${mapWidth}x${mapHeight} tiles (${tileSize}px each) = ${mapWidth * tileSize}x${mapHeight * tileSize}px total`);
   }
 
@@ -402,10 +419,7 @@ export default class MainScene extends Phaser.Scene {
     // Start with idle animation
     this.localPlayer.play('player-idle');
 
-    // Enable collision between player and walls
-    if (this.objectsLayer) {
-      this.physics.add.collider(this.localPlayer, this.objectsLayer);
-    }
+    // Collision with walls will be set up later after tilemap is created
 
     // Set player color if available from store
     const playerStore = (window as any).playerStore;
@@ -529,6 +543,9 @@ export default class MainScene extends Phaser.Scene {
 
   updateGameState(gameState: any): void {
     if (!gameState) return;
+
+    // Store the current game state
+    this.currentGameState = gameState;
 
     // Check if game phase has changed
     if (gameState.gamePhase === 'playing' && !this.gameStarted) {
@@ -878,6 +895,21 @@ export default class MainScene extends Phaser.Scene {
           return;
         }
 
+        // Check collision with walls using tilemap
+        if (this.objectsLayer) {
+          // Convert bullet position to tile coordinates
+          const tileX = Math.floor(bullet.x / 16);
+          const tileY = Math.floor(bullet.y / 16);
+
+          // Check if the tile at this position is a wall (has collision)
+          const tile = this.objectsLayer.getTileAt(tileX, tileY);
+          if (tile && tile.collides) {
+            // Bullet hit a wall
+            this.destroyBullet(bullet);
+            return;
+          }
+        }
+
         // Check collision with other players
         for (const [playerId, otherPlayer] of this.otherPlayers) {
           // Skip dead or protected players - they're in quiz mode and shouldn't have collision
@@ -1120,6 +1152,11 @@ export default class MainScene extends Phaser.Scene {
   }
 
   destroyBullet(bullet: any): void {
+    // Check if bullet still exists and is active
+    if (!bullet || !bullet.active) {
+      return;
+    }
+
     if (bullet.bulletId) {
       this.activeBullets.delete(bullet.bulletId);
       // Send bullet destroy message to server
@@ -1127,8 +1164,14 @@ export default class MainScene extends Phaser.Scene {
         bulletId: bullet.bulletId
       });
     }
+
+    // Disable physics body first to prevent collision errors
+    if (bullet.body) {
+      bullet.body.enable = false;
+    }
+
+    // Then remove from group
     this.bullets.killAndHide(bullet);
-    bullet.body.enable = false;
   }
 
   handleBulletHit(bullet: any, targetPlayerId: string, targetPlayer: PlayerSprite): void {
@@ -1167,32 +1210,55 @@ export default class MainScene extends Phaser.Scene {
   }
 
   flashWhite(sprite: PlayerSprite): void {
+    // Store the original tint before flashing
+    const originalTint = sprite.tint;
+
     // Apply white silhouette effect (fills entire sprite with white)
     sprite.setTintFill(0xffffff);
 
     // Remove tint after 100ms
     this.time.delayedCall(100, () => {
-      // Clear the tint fill and restore original tint
+      // Clear the tint fill effect
       sprite.clearTint();
-      const playerData = this.getPlayerData(sprite.playerId!);
-      if (playerData?.color) {
-        sprite.setTint(parseInt(playerData.color.replace('#', '0x')));
+
+      // Restore the original tint
+      if (sprite.playerId === this.playerId) {
+        // For local player, get color from player store
+        const playerStore = (window as any).playerStore;
+        if (playerStore && playerStore.color) {
+          sprite.setTint(parseInt(playerStore.color.replace('#', '0x')));
+        }
+      } else {
+        // For other players, get color from game state
+        const playerData = this.getPlayerData(sprite.playerId!);
+        if (playerData?.color) {
+          sprite.setTint(parseInt(playerData.color.replace('#', '0x')));
+        } else if (originalTint && originalTint !== 0xffffff) {
+          // Fallback to original tint if we can't find player data
+          sprite.setTint(originalTint);
+        }
       }
     });
   }
 
   getPlayerData(playerId: string): Player | undefined {
-    // This will be populated from game state
-    return undefined; // Placeholder for now
+    // Get player data from the current game state
+    if (this.currentGameState && this.currentGameState.players) {
+      return this.currentGameState.players[playerId];
+    }
+    return undefined;
   }
 
 
   spawnOtherPlayerBullet(data: any): void {
-    // Create bullet for other player
-    const bullet = this.add.sprite(data.x, data.y, 'bullets', 0);
+    // Create bullet for other player using regular sprite (no physics for now)
+    const bullet = this.add.sprite(data.x, data.y, 'bullets', 0) as any;
     bullet.setScale(1);
     bullet.setDepth(9);
     bullet.setRotation(data.angle);
+
+    // Store bullet ID for tracking
+    bullet.bulletId = data.bulletId;
 
     // Store in tracking map
     this.otherPlayerBullets.set(data.bulletId, bullet);
@@ -1203,12 +1269,26 @@ export default class MainScene extends Phaser.Scene {
     const endX = data.x + Math.cos(data.angle) * distance;
     const endY = data.y + Math.sin(data.angle) * distance;
 
-    this.tweens.add({
+    const tween = this.tweens.add({
       targets: bullet,
       x: endX,
       y: endY,
       duration: duration,
       ease: 'Linear',
+      onUpdate: () => {
+        // Check wall collision during movement
+        if (this.objectsLayer && bullet && bullet.active !== false) {
+          const tileX = Math.floor(bullet.x / 16);
+          const tileY = Math.floor(bullet.y / 16);
+          const tile = this.objectsLayer.getTileAt(tileX, tileY);
+
+          if (tile && tile.collides) {
+            // Bullet hit a wall
+            tween.stop();
+            this.removeOtherPlayerBullet(data.bulletId);
+          }
+        }
+      },
       onComplete: () => {
         this.removeOtherPlayerBullet(data.bulletId);
       }
@@ -1218,8 +1298,11 @@ export default class MainScene extends Phaser.Scene {
   removeOtherPlayerBullet(bulletId: string): void {
     const bullet = this.otherPlayerBullets.get(bulletId);
     if (bullet) {
-      bullet.destroy();
+      // Remove from tracking map
       this.otherPlayerBullets.delete(bulletId);
+
+      // Destroy the sprite
+      bullet.destroy();
     }
   }
 
