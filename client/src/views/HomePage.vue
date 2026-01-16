@@ -21,6 +21,12 @@ function clearError() {
   error.value = '';
 }
 
+function handleCodeInput(event: Event) {
+  const input = event.target as HTMLInputElement;
+  code.value = input.value.toUpperCase();
+  clearError();
+}
+
 function handleError(message: any) {
   isLoading.value = false;
   error.value = message.error || 'An unexpected error occurred';
@@ -186,13 +192,13 @@ onUnmounted(() => {
         </div>
 
         <input 
-          class="input-field py-3 px-6 font-bold rounded-xl outline-none text-center w-full uppercase"
+          class="input-field py-3 px-6 font-bold rounded-xl outline-none text-center w-full"
           :class="error ? 'border-coral' : ''"
-          v-model="code"
+          :value="code"
           name="code" 
           id="code"
           placeholder="Join Code"
-          @input="clearError"
+          @input="handleCodeInput"
         />
         <input 
           class="input-field py-3 px-6 font-bold rounded-xl outline-none text-center w-full"
