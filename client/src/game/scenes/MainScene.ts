@@ -240,8 +240,8 @@ export default class MainScene extends Phaser.Scene {
       this.updateScoreUI();
     });
 
-    // Add crosshair cursor
-    this.input.setDefaultCursor('crosshair');
+    // Add custom cursor
+    this.input.setDefaultCursor('url(/assets/images/pointer.png), crosshair');
 
     // Setup mouse click handling for firing
     this.input.on('pointerdown', () => {
@@ -1768,6 +1768,11 @@ export default class MainScene extends Phaser.Scene {
     this.localPlayer.nameText?.setAlpha(0.5);
     this.localPlayer.gunSprite?.setAlpha(0.5);
 
+    // Force send position update to inform server about protection status
+    const animation = this.localPlayer.body?.velocity.length() ?? 0 > 0 ? 'running' : 'idle';
+    const direction = this.localPlayer.flipX ? 'left' : 'right';
+    this.sendPositionUpdate(this.localPlayer.x, this.localPlayer.y, animation, direction);
+
     // Trigger the ammo quiz via global function
     if ((window as any).showAmmoQuiz) {
       (window as any).showAmmoQuiz();
@@ -1786,6 +1791,11 @@ export default class MainScene extends Phaser.Scene {
     this.localPlayer.setAlpha(1);
     this.localPlayer.nameText?.setAlpha(1);
     this.localPlayer.gunSprite?.setAlpha(1);
+
+    // Force send position update to inform server that protection is over
+    const animation = this.localPlayer.body?.velocity.length() ?? 0 > 0 ? 'running' : 'idle';
+    const direction = this.localPlayer.flipX ? 'left' : 'right';
+    this.sendPositionUpdate(this.localPlayer.x, this.localPlayer.y, animation, direction);
 
     this.updateAmmoUI();
   }

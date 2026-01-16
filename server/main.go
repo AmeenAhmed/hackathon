@@ -409,7 +409,7 @@ func (r *Room) broadcastToClients(message []byte) {
 	}
 }
 
-func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation string, direction string, gunRotation float64, gunFlipped bool, currentGun int) {
+func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation string, direction string, gunRotation float64, gunFlipped bool, currentGun int, isProtected bool) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -421,6 +421,14 @@ func (r *Room) updatePlayerPosition(playerID string, x, y float64, animation str
 		player.GunRotation = gunRotation
 		player.GunFlipped = gunFlipped
 		player.CurrentGun = currentGun
+		// Only update protection if client is setting it to true (in quiz mode)
+		// Don't override server-side spawn protection
+		if isProtected {
+			player.IsProtected = true
+		} else if player.ProtectionExpiry.IsZero() {
+			// Only remove protection if there's no spawn protection timer active
+			player.IsProtected = false
+		}
 		r.LastUpdate = time.Now()
 	}
 }
@@ -601,12 +609,13 @@ func (c *Client) handleMessage(msg Message) {
 			GunRotation float64 `json:"gunRotation"`
 			GunFlipped  bool    `json:"gunFlipped"`
 			CurrentGun  int     `json:"currentGun"`
+			IsProtected bool    `json:"isProtected"`
 		}
 		if err := json.Unmarshal(msg.Content, &data); err != nil {
 			log.Printf("Error parsing updatePosition message: %v", err)
 			return
 		}
-		c.handleUpdatePosition(data.X, data.Y, data.Animation, data.Direction, data.GunRotation, data.GunFlipped, data.CurrentGun)
+		c.handleUpdatePosition(data.X, data.Y, data.Animation, data.Direction, data.GunRotation, data.GunFlipped, data.CurrentGun, data.IsProtected)
 
 	case "bulletSpawn":
 		var data struct {
@@ -976,7 +985,7 @@ func (c *Client) handleRejoinDashboard(code string) {
 	room.sendGameStateToClient(c)
 }
 
-func (c *Client) handleUpdatePosition(x, y float64, animation string, direction string, gunRotation float64, gunFlipped bool, currentGun int) {
+func (c *Client) handleUpdatePosition(x, y float64, animation string, direction string, gunRotation float64, gunFlipped bool, currentGun int, isProtected bool) {
 	if c.RoomCode == "" || c.Player == nil {
 		return
 	}
@@ -986,7 +995,7 @@ func (c *Client) handleUpdatePosition(x, y float64, animation string, direction 
 		return
 	}
 
-	room.updatePlayerPosition(c.ID, x, y, animation, direction, gunRotation, gunFlipped, currentGun)
+	room.updatePlayerPosition(c.ID, x, y, animation, direction, gunRotation, gunFlipped, currentGun, isProtected)
 }
 
 func (c *Client) handleBulletSpawn(bulletID string, x, y, velocityX, velocityY, angle float64, gunType int) {
