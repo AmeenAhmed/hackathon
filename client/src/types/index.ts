@@ -10,6 +10,8 @@ export interface Player {
   correctAnswers: number
   questionsAttempted: number
   kills: number
+  health: number
+  maxHealth: number
 }
 
 export interface GameState {

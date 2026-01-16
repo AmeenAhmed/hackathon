@@ -11,6 +11,10 @@ interface PlayerSprite extends Phaser.Physics.Arcade.Sprite {
   gunSprite?: Phaser.GameObjects.Sprite;
   isDead?: boolean;
   deathText?: Phaser.GameObjects.Text;
+  healthBarBackground?: Phaser.GameObjects.Rectangle;
+  healthBarFill?: Phaser.GameObjects.Rectangle;
+  currentHealth?: number;
+  maxHealth?: number;
 }
 
 export default class DashboardScene extends Phaser.Scene {
@@ -280,6 +284,8 @@ export default class DashboardScene extends Phaser.Scene {
         sprite.nameText?.destroy();
         sprite.gunSprite?.destroy();
         sprite.deathText?.destroy();
+        sprite.healthBarBackground?.destroy();
+        sprite.healthBarFill?.destroy();
         sprite.destroy();
         this.players.delete(playerId);
       }
@@ -328,7 +334,7 @@ export default class DashboardScene extends Phaser.Scene {
       // Add player name
       const nameText = this.add.text(
         playerData.x,
-        playerData.y - 20,
+        playerData.y - 30,
         playerData.name || 'Player', {
         fontSize: '10px',
         color: '#ffffff',
@@ -338,6 +344,29 @@ export default class DashboardScene extends Phaser.Scene {
       nameText.setOrigin(0.5, 0.5);
       nameText.setDepth(11);
       sprite.nameText = nameText;
+
+      // Add health bar
+      const healthBarWidth = 32;
+      const healthBarHeight = 4;
+
+      // Health bar background (dark red)
+      const healthBarBg = this.add.rectangle(
+        playerData.x, playerData.y - 20, healthBarWidth, healthBarHeight, 0x550000
+      );
+      healthBarBg.setOrigin(0.5, 0.5);
+      healthBarBg.setDepth(11);
+
+      // Health bar fill (green)
+      const healthBarFill = this.add.rectangle(
+        playerData.x, playerData.y - 20, healthBarWidth, healthBarHeight, 0x00ff00
+      );
+      healthBarFill.setOrigin(0.5, 0.5);
+      healthBarFill.setDepth(12);
+
+      sprite.healthBarBackground = healthBarBg;
+      sprite.healthBarFill = healthBarFill;
+      sprite.currentHealth = playerData.health || 100;
+      sprite.maxHealth = playerData.maxHealth || 100;
 
       // Add gun sprite
       const gunSprite = this.add.sprite(playerData.x, playerData.y, 'guns', playerData.currentGun || 0);
@@ -392,10 +421,46 @@ export default class DashboardScene extends Phaser.Scene {
         this.tweens.add({
           targets: sprite.nameText,
           x: playerData.x,
+          y: playerData.y - 30,
+          duration: 100,
+          ease: 'Linear'
+        });
+      }
+
+      // Update health bar position
+      if (sprite.healthBarBackground) {
+        this.tweens.add({
+          targets: sprite.healthBarBackground,
+          x: playerData.x,
           y: playerData.y - 20,
           duration: 100,
           ease: 'Linear'
         });
+      }
+      if (sprite.healthBarFill) {
+        this.tweens.add({
+          targets: sprite.healthBarFill,
+          x: playerData.x,
+          y: playerData.y - 20,
+          duration: 100,
+          ease: 'Linear'
+        });
+
+        // Update health bar size based on current health
+        if (playerData.health !== undefined) {
+          sprite.currentHealth = playerData.health;
+          const healthPercent = sprite.currentHealth / (sprite.maxHealth || 100);
+          sprite.healthBarFill.width = 32 * healthPercent;
+
+          // Change color based on health level
+          if (healthPercent > 0.6) {
+            sprite.healthBarFill.setFillStyle(0x00ff00); // Green
+          } else if (healthPercent > 0.3) {
+            sprite.healthBarFill.setFillStyle(0xffff00); // Yellow
+          } else {
+            sprite.healthBarFill.setFillStyle(0xff0000); // Red
+          }
+        }
       }
 
       // Update gun sprite
@@ -572,6 +637,9 @@ export default class DashboardScene extends Phaser.Scene {
     bullet.setRotation(angle);
     bullet.setDepth(9);
 
+    // Add tint effect to bullet
+    bullet.setTint(0xffff88); // Yellowish tint for visibility
+
     // Store bullet
     this.bullets.set(bulletId, bullet);
 
@@ -653,6 +721,8 @@ export default class DashboardScene extends Phaser.Scene {
       sprite.setAlpha(0.3);
       sprite.stop();
       if (sprite.gunSprite) sprite.gunSprite.setVisible(false);
+      if (sprite.healthBarBackground) sprite.healthBarBackground.setVisible(false);
+      if (sprite.healthBarFill) sprite.healthBarFill.setVisible(false);
       if (sprite.deathText) {
         sprite.deathText.setVisible(true);
         // Pulse effect on death text
@@ -683,7 +753,21 @@ export default class DashboardScene extends Phaser.Scene {
         sprite.deathText.setPosition(x, y);
       }
       if (sprite.nameText) {
-        sprite.nameText.setPosition(x, y - 20);
+        sprite.nameText.setPosition(x, y - 30);
+      }
+
+      // Update health bar position on respawn
+      if (sprite.healthBarBackground) {
+        sprite.healthBarBackground.setPosition(x, y - 20);
+        sprite.healthBarBackground.setVisible(true);
+      }
+      if (sprite.healthBarFill) {
+        sprite.healthBarFill.setPosition(x, y - 20);
+        sprite.healthBarFill.setVisible(true);
+        // Reset health to full on respawn
+        sprite.currentHealth = sprite.maxHealth || 100;
+        sprite.healthBarFill.width = 32;
+        sprite.healthBarFill.setFillStyle(0x00ff00); // Green
       }
 
       // Respawn effect
@@ -760,7 +844,15 @@ export default class DashboardScene extends Phaser.Scene {
       if (sprite && sprite.active) {
         // Update name text position to follow sprite
         if (sprite.nameText) {
-          sprite.nameText.setPosition(sprite.x, sprite.y - 20);
+          sprite.nameText.setPosition(sprite.x, sprite.y - 30);
+        }
+
+        // Update health bar position to follow sprite
+        if (sprite.healthBarBackground) {
+          sprite.healthBarBackground.setPosition(sprite.x, sprite.y - 20);
+        }
+        if (sprite.healthBarFill) {
+          sprite.healthBarFill.setPosition(sprite.x, sprite.y - 20);
         }
 
         // Update gun sprite position to follow sprite (at player position)
@@ -793,6 +885,8 @@ export default class DashboardScene extends Phaser.Scene {
       if (sprite.nameText) sprite.nameText.destroy();
       if (sprite.gunSprite) sprite.gunSprite.destroy();
       if (sprite.deathText) sprite.deathText.destroy();
+      if (sprite.healthBarBackground) sprite.healthBarBackground.destroy();
+      if (sprite.healthBarFill) sprite.healthBarFill.destroy();
       sprite.destroy();
     }
     this.players.clear();

@@ -18,6 +18,8 @@ interface Player {
   gunRotation?: number;
   gunFlipped?: boolean;
   currentGun?: number;
+  health?: number;
+  maxHealth?: number;
 }
 
 interface PlayerSprite extends Phaser.Physics.Arcade.Sprite {
@@ -26,6 +28,10 @@ interface PlayerSprite extends Phaser.Physics.Arcade.Sprite {
   gunSprite?: Phaser.GameObjects.Sprite;
   isDead?: boolean;
   isProtected?: boolean;
+  healthBarBackground?: Phaser.GameObjects.Rectangle;
+  healthBarFill?: Phaser.GameObjects.Rectangle;
+  currentHealth?: number;
+  maxHealth?: number;
 }
 
 export default class MainScene extends Phaser.Scene {
@@ -430,7 +436,7 @@ export default class MainScene extends Phaser.Scene {
     const baseName = playerStore?.name || 'Player';
     const playerName = `${baseName} (You)`;
 
-    const nameText = this.add.text(0, -20, playerName, {
+    const nameText = this.add.text(0, -30, playerName, {
       fontSize: '10px',
       color: '#ffffff',
       backgroundColor: '#000000',
@@ -440,6 +446,29 @@ export default class MainScene extends Phaser.Scene {
     nameText.setDepth(11); // Above player
     nameText.setVisible(true); // Ensure name is visible
     this.localPlayer.nameText = nameText;
+
+    // Add health bar
+    const healthBarWidth = 32;
+    const healthBarHeight = 4;
+
+    // Health bar background (dark red)
+    const healthBarBg = this.add.rectangle(
+      startX, startY - 20, healthBarWidth, healthBarHeight, 0x550000
+    );
+    healthBarBg.setOrigin(0.5, 0.5);
+    healthBarBg.setDepth(11);
+
+    // Health bar fill (green)
+    const healthBarFill = this.add.rectangle(
+      startX, startY - 20, healthBarWidth, healthBarHeight, 0x00ff00
+    );
+    healthBarFill.setOrigin(0.5, 0.5);
+    healthBarFill.setDepth(12);
+
+    this.localPlayer.healthBarBackground = healthBarBg;
+    this.localPlayer.healthBarFill = healthBarFill;
+    this.localPlayer.currentHealth = 100;
+    this.localPlayer.maxHealth = 100;
 
     // Add gun sprite (use frame 0, first gun)
     const gunSprite = this.add.sprite(startX, startY, 'guns', 0);
@@ -589,12 +618,36 @@ export default class MainScene extends Phaser.Scene {
         // console.log(`Processing player ${playerId}:`, playerData);
         this.updateOtherPlayer(playerId, playerData as Player);
       } else {
-        // Update local player's name if it changed (server has the actual name)
+        // Update local player's data from server
         const serverPlayerData = playerData as Player;
-        if (serverPlayerData.name && this.localPlayer && this.localPlayer.nameText) {
-          const newName = `${serverPlayerData.name} (You)`;
-          if (this.localPlayer.nameText.text !== newName) {
-            this.localPlayer.nameText.setText(newName);
+        if (this.localPlayer) {
+          // Update name if it changed
+          if (serverPlayerData.name && this.localPlayer.nameText) {
+            const newName = `${serverPlayerData.name} (You)`;
+            if (this.localPlayer.nameText.text !== newName) {
+              this.localPlayer.nameText.setText(newName);
+            }
+          }
+
+          // Update health
+          if (serverPlayerData.health !== undefined) {
+            this.localPlayer.currentHealth = serverPlayerData.health;
+            this.localPlayer.maxHealth = serverPlayerData.maxHealth || 100;
+
+            // Update health bar fill
+            if (this.localPlayer.healthBarFill) {
+              const healthPercent = this.localPlayer.currentHealth / this.localPlayer.maxHealth;
+              this.localPlayer.healthBarFill.width = 32 * healthPercent;
+
+              // Change color based on health level
+              if (healthPercent > 0.6) {
+                this.localPlayer.healthBarFill.setFillStyle(0x00ff00); // Green
+              } else if (healthPercent > 0.3) {
+                this.localPlayer.healthBarFill.setFillStyle(0xffff00); // Yellow
+              } else {
+                this.localPlayer.healthBarFill.setFillStyle(0xff0000); // Red
+              }
+            }
           }
         }
       }
@@ -605,6 +658,8 @@ export default class MainScene extends Phaser.Scene {
       if (!gameState.players[playerId]) {
         sprite.nameText?.destroy();
         sprite.gunSprite?.destroy();
+        sprite.healthBarBackground?.destroy();
+        sprite.healthBarFill?.destroy();
         sprite.destroy();
         this.otherPlayers.delete(playerId);
       }
@@ -663,7 +718,7 @@ export default class MainScene extends Phaser.Scene {
 
       const nameText = this.add.text(
         playerData.x || this.worldWidth / 2,
-        (playerData.y || this.worldHeight / 2) - 20,
+        (playerData.y || this.worldHeight / 2) - 30,
         displayName, {
         fontSize: '12px',
         color: '#00ff00',  // Green color to distinguish from local player
@@ -673,6 +728,31 @@ export default class MainScene extends Phaser.Scene {
       nameText.setOrigin(0.5, 0.5);
       nameText.setDepth(11); // Above player
       sprite.nameText = nameText;
+
+      // Add health bar
+      const healthBarWidth = 32;
+      const healthBarHeight = 4;
+      const posX = playerData.x || this.worldWidth / 2;
+      const posY = (playerData.y || this.worldHeight / 2) - 20;
+
+      // Health bar background (dark red)
+      const healthBarBg = this.add.rectangle(
+        posX, posY, healthBarWidth, healthBarHeight, 0x550000
+      );
+      healthBarBg.setOrigin(0.5, 0.5);
+      healthBarBg.setDepth(11);
+
+      // Health bar fill (green)
+      const healthBarFill = this.add.rectangle(
+        posX, posY, healthBarWidth, healthBarHeight, 0x00ff00
+      );
+      healthBarFill.setOrigin(0.5, 0.5);
+      healthBarFill.setDepth(12);
+
+      sprite.healthBarBackground = healthBarBg;
+      sprite.healthBarFill = healthBarFill;
+      sprite.currentHealth = playerData.health || 100;
+      sprite.maxHealth = playerData.maxHealth || 100;
 
       // Add gun sprite for other players
       const gunSprite = this.add.sprite(
@@ -719,7 +799,31 @@ export default class MainScene extends Phaser.Scene {
         sprite.nameText.setText(displayName);
 
         // Update position directly
-        sprite.nameText.setPosition(playerData.x, playerData.y - 20);
+        sprite.nameText.setPosition(playerData.x, playerData.y - 30);
+      }
+
+      // Update health bar
+      if (sprite.healthBarBackground) {
+        sprite.healthBarBackground.setPosition(playerData.x, playerData.y - 20);
+      }
+      if (sprite.healthBarFill) {
+        sprite.healthBarFill.setPosition(playerData.x, playerData.y - 20);
+
+        // Update health bar size based on current health
+        if (playerData.health !== undefined) {
+          sprite.currentHealth = playerData.health;
+          const healthPercent = sprite.currentHealth / (sprite.maxHealth || 100);
+          sprite.healthBarFill.width = 32 * healthPercent;
+
+          // Change color based on health level
+          if (healthPercent > 0.6) {
+            sprite.healthBarFill.setFillStyle(0x00ff00); // Green
+          } else if (healthPercent > 0.3) {
+            sprite.healthBarFill.setFillStyle(0xffff00); // Yellow
+          } else {
+            sprite.healthBarFill.setFillStyle(0xff0000); // Red
+          }
+        }
       }
 
       // Update gun position, rotation and flip
@@ -829,6 +933,20 @@ export default class MainScene extends Phaser.Scene {
     if (this.localPlayer.nameText) {
       this.localPlayer.nameText.setPosition(
         this.localPlayer.x,
+        this.localPlayer.y - 30
+      );
+    }
+
+    // Update health bar position
+    if (this.localPlayer.healthBarBackground) {
+      this.localPlayer.healthBarBackground.setPosition(
+        this.localPlayer.x,
+        this.localPlayer.y - 20
+      );
+    }
+    if (this.localPlayer.healthBarFill) {
+      this.localPlayer.healthBarFill.setPosition(
+        this.localPlayer.x,
         this.localPlayer.y - 20
       );
     }
@@ -879,6 +997,7 @@ export default class MainScene extends Phaser.Scene {
       // Check our active bullets for collisions and distance
       this.bullets.children.entries.forEach((bullet: any) => {
         if (!bullet.active || !bullet.ownerId || bullet.ownerId !== this.playerId) return;
+
 
         // Check distance first
         const distance = Phaser.Math.Distance.Between(
@@ -1082,6 +1201,9 @@ export default class MainScene extends Phaser.Scene {
       bullet.setScale(1);
       bullet.setDepth(9); // Below player (player is at depth 10)
 
+      // Add tint effect to bullet
+      bullet.setTint(0xffff88); // Yellowish tint for visibility
+
       // Generate unique bullet ID
       const bulletId = `${this.playerId}_${this.bulletIdCounter++}`;
       bullet.bulletId = bulletId;
@@ -1256,6 +1378,9 @@ export default class MainScene extends Phaser.Scene {
     bullet.setDepth(9);
     bullet.setRotation(data.angle);
 
+    // Add tint effect to bullet
+    bullet.setTint(0xffff88); // Yellowish tint for visibility
+
     // Store bullet ID for tracking
     bullet.bulletId = data.bulletId;
 
@@ -1330,6 +1455,8 @@ export default class MainScene extends Phaser.Scene {
       this.localPlayer.setVisible(false);
       this.localPlayer.nameText?.setVisible(false);
       this.localPlayer.gunSprite?.setVisible(false);
+      this.localPlayer.healthBarBackground?.setVisible(false);
+      this.localPlayer.healthBarFill?.setVisible(false);
 
       // Mark as dead
       this.isDead = true;
@@ -1352,6 +1479,8 @@ export default class MainScene extends Phaser.Scene {
         this.localPlayer.setVisible(true);
         this.localPlayer.nameText?.setVisible(true);
         this.localPlayer.gunSprite?.setVisible(true);
+        this.localPlayer.healthBarBackground?.setVisible(true);
+        this.localPlayer.healthBarFill?.setVisible(true);
 
         this.isDead = false;
         this.playerHealth.set(this.playerId, 100);
@@ -1376,6 +1505,8 @@ export default class MainScene extends Phaser.Scene {
         otherPlayer.setVisible(false);
         otherPlayer.nameText?.setVisible(false);
         otherPlayer.gunSprite?.setVisible(false);
+        otherPlayer.healthBarBackground?.setVisible(false);
+        otherPlayer.healthBarFill?.setVisible(false);
         // Mark other player as dead
         otherPlayer.isDead = true;
       }
@@ -1509,6 +1640,14 @@ export default class MainScene extends Phaser.Scene {
       this.localPlayer.setVisible(true);
       this.localPlayer.nameText?.setVisible(true);
       this.localPlayer.gunSprite?.setVisible(true);
+      this.localPlayer.healthBarBackground?.setVisible(true);
+      this.localPlayer.healthBarFill?.setVisible(true);
+      // Reset health to full
+      if (this.localPlayer.healthBarFill) {
+        this.localPlayer.currentHealth = 100;
+        this.localPlayer.healthBarFill.width = 32;
+        this.localPlayer.healthBarFill.setFillStyle(0x00ff00);
+      }
       this.playerHealth.set(this.playerId, 100);
     } else {
       // Other player respawned
@@ -1518,6 +1657,14 @@ export default class MainScene extends Phaser.Scene {
         otherPlayer.setVisible(true);
         otherPlayer.nameText?.setVisible(true);
         otherPlayer.gunSprite?.setVisible(true);
+        otherPlayer.healthBarBackground?.setVisible(true);
+        otherPlayer.healthBarFill?.setVisible(true);
+        // Reset health to full
+        if (otherPlayer.healthBarFill) {
+          otherPlayer.currentHealth = 100;
+          otherPlayer.healthBarFill.width = 32;
+          otherPlayer.healthBarFill.setFillStyle(0x00ff00);
+        }
         // Clear dead state
         otherPlayer.isDead = false;
         this.playerHealth.set(data.playerId, 100);

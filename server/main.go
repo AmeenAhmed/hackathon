@@ -36,6 +36,8 @@ type Player struct {
 	CorrectAnswers     int       `json:"correctAnswers"`
 	QuestionsAttempted int       `json:"questionsAttempted"`
 	Kills              int       `json:"kills"`
+	Health             float64   `json:"health"`
+	MaxHealth          float64   `json:"maxHealth"`
 }
 
 // Client represents a connected websocket client
@@ -808,6 +810,8 @@ func (c *Client) handleJoinRoom(code string, playerName string) {
 		Animation:   "idle",
 		Direction:   "right",
 		IsProtected: false, // No spawn protection on initial join
+		Health:      100,
+		MaxHealth:   100,
 	}
 
 	log.Printf("Created player - ID: %s, Name: %s, Color: %s, Spawn: (%.0f, %.0f) [Chest spawn]",
@@ -866,6 +870,8 @@ func (c *Client) handleRejoinRoom(code string, playerID string) {
 			Animation:   "idle",
 			Direction:   existingPlayer.Direction,
 			IsProtected: false, // No spawn protection on rejoin
+			Health:      100,
+			MaxHealth:   100,
 		}
 		// Set default direction if empty
 		if c.Player.Direction == "" {
@@ -885,6 +891,8 @@ func (c *Client) handleRejoinRoom(code string, playerID string) {
 			Y:         spawnY,
 			Animation: "idle",
 			Direction: "right",
+			Health:    100,
+			MaxHealth: 100,
 		}
 		log.Printf("Player %s joining room %s as new player", playerID, code)
 	}
@@ -1050,6 +1058,13 @@ func (c *Client) handlePlayerHit(bulletID, targetPlayerID string, damage int, he
 		return
 	}
 
+	// Update player health on server
+	room.mutex.Lock()
+	if player, exists := room.GameState.Players[targetPlayerID]; exists {
+		player.Health = health
+	}
+	room.mutex.Unlock()
+
 	// Broadcast hit to all clients for visual effects
 	room.broadcastToAll(struct {
 		Type           string  `json:"type"`
@@ -1108,6 +1123,7 @@ func (c *Client) handlePlayerRespawn(playerID string, x, y float64) {
 		player.Y = spawnY
 		player.IsProtected = true                                 // Give spawn protection
 		player.ProtectionExpiry = time.Now().Add(3 * time.Second) // 3 seconds of protection
+		player.Health = player.MaxHealth                          // Reset health to full on respawn
 	}
 	room.mutex.Unlock()
 
